@@ -958,6 +958,12 @@
       return;
     }
     if (el.id === 'resetM3u') { store('m3u', DEFAULT_M3U); $('m3uInput').value = DEFAULT_M3U; channels = []; toast('Lista restablecida'); return; }
+    if (el.id === 'checkUpdate') {
+      if (IS_ANDROID && typeof window.Android.checkUpdateNow === 'function') { toast('Buscando actualización…'); window.Android.checkUpdateNow(); }
+      else if (IS_ANDROID) toast('Para buscar actualizaciones con este botón instala la nueva APK de FuturaTV');
+      else location.reload(true);
+      return;
+    }
     if (el.id === 'unhideAll') { hiddenSet = {}; saveSet('hidden', hiddenSet); refreshChannels(); updateSettingsInfo(); toast('Todos los canales vuelven a estar visibles'); return; }
     if (el.id === 'clearFavs') { favs = {}; saveSet('favs', favs); refreshChannels(); updateSettingsInfo(); toast('Favoritos borrados'); return; }
     if (el.tagName === 'INPUT') el.focus();
@@ -1231,6 +1237,10 @@
     toast('Actualizando FuturaTV a la versión ' + pendingUpdate + '…');
     setTimeout(function () { try { window.Android.reload(); } catch (e) { location.reload(); } }, 1500);
   }
+  window.mitvUpdateStatus = function (s) {
+    toast({ ok: 'Ya tienes la última versión', downloading: 'Descargando la nueva versión…',
+            error: 'No se pudo revisar. ¿Hay internet?' }[s] || s);
+  };
   window.mitvUpdateReady = function (version) {
     pendingUpdate = version;
     if (mode === 'none' && !menuOpen && !searchOpen) applyUpdate();
