@@ -930,6 +930,7 @@
   function contextChannel() {
     if (mode === 'full' && sideOpen) return sideList[sideIdx] || null;
     if (mode === 'full') return nowCh;
+    if (focused && focused.classList.contains('wt')) { var wt = wallTiles[+focused.getAttribute('data-w')]; return wt ? wt.c : null; }
     if (focused && focused.hasAttribute('data-ch')) {
       var it = filtered[+focused.getAttribute('data-ch')];
       return it && !it.isCountry ? it : null;
@@ -944,6 +945,8 @@
     if (el.classList.contains('key')) { pressKey(el.getAttribute('data-k')); return; }
     if (el.id === 'voiceBtn') { startVoice(); return; }
     if (el.id === 'pipMoveBtn') { cyclePip(); return; }
+    if (el.id === 'wallToggle') { wallToggle(); return; }
+    if (el.classList.contains('wt')) { wallActivate(el); return; }
     if (el.id === 'searchBtn') { if (searchOpen) closeSearch(false); else openSearch(); return; }
     if (el.id === 'searchInput') {          // OK en el cuadro de texto: ir al primer resultado (o abrir teclado del sistema)
       var first = document.querySelector('[data-ch="0"]');
@@ -1032,6 +1035,9 @@
     if (listening) {                       // mientras se escucha: ATRÁS u OK cancelan
       if (k === KEY.BACK || k === KEY.ESC || k === KEY.BACKSPACE || k === KEY.ENTER) cancelVoice();
       e.preventDefault(); return;
+    }
+    if (wallBig && !menuOpen && k !== KEY.BACK && k !== KEY.ESC && k !== KEY.BACKSPACE) {
+      if (wallKey(k)) { e.preventDefault(); return; }
     }
     var typing = document.activeElement && document.activeElement.tagName === 'INPUT';
     if (typing && (k === KEY.LEFT || k === KEY.RIGHT || k === KEY.BACKSPACE)) return; // edición de texto
@@ -1275,7 +1281,9 @@
   // ---------- Muro de favoritos en vivo (celular) ----------
   // Todos los favoritos se reproducen a la vez, sin sonido y en baja calidad. Al tocar uno se agranda al
   // frente con sonido; deslizándolo hacia arriba vuelve a su lugar. Se activa con el botón «Favoritos en vivo».
-  var WALL_MAX = (navigator.deviceMemory && navigator.deviceMemory >= 6) ? 6 : 4;   // videos a la vez
+  // Videos a la vez: en TV como máximo 4 (los televisores tienen pocos decodificadores de video)
+  var WALL_MAX = IS_PHONE ? ((navigator.deviceMemory && navigator.deviceMemory >= 6) ? 6 : 4) : 4;
+  var WALL_HINT = IS_PHONE ? 'Desliza ↑ para volver' : '◀ ▶ cambiar · OK pantalla completa · ATRÁS volver';
   var WALL_HLS = {
     enableWorker: true, startLevel: 0, capLevelToPlayerSize: true,      // calidad según el tamaño del cuadro
     maxBufferLength: 8, maxMaxBufferLength: 12, backBufferLength: 0,
@@ -1288,11 +1296,11 @@
   var wallReady = true;
 
   function wallShouldShow() {
-    return IS_PHONE && wallOn && currentView === 'live' && activeGroup === FAV_GROUP && !searchOpen &&
+    return wallOn && currentView === 'live' && activeGroup === FAV_GROUP && !searchOpen &&
       mode === 'none' && !document.hidden;
   }
   function wallSync() {
-    if (!wallReady || !IS_PHONE) return;
+    if (!wallReady) return;
     var hasFav = channels.length > 0 && listFor(FAV_GROUP).length > 0;
     var btn = $('wallToggle');
     btn.classList.toggle('hidden', !hasFav);
@@ -1310,12 +1318,12 @@
     wallShown = true; wallSig = sig;
     var box = $('favWall');
     box.innerHTML = list.map(function (c, i) {
-      return '<div class="wt" data-w="' + i + '"><div class="wt-in">' +
+      return '<div class="wt focusable" data-w="' + i + '"><div class="wt-in">' +
         '<div class="wt-logo">' + logoHtml(c, true) + '</div>' +
         '<video muted autoplay playsinline disablepictureinpicture></video>' +
         '<span class="wt-name">' + escapeHtml(c.name) + '</span>' +
         '<button class="wt-btn" aria-label="Ver con sonido">' + ICO_PLAY_SOUND + '</button>' +
-        '<span class="wt-hint">Desliza ↑ para volver</span>' +
+        '<span class="wt-hint">' + WALL_HINT + '</span>' +
         '<button class="wt-full" aria-label="Pantalla completa">⛶</button>' +
         '<i class="wt-spin"></i><span class="wt-err">Sin señal · toca para reintentar</span>' +
         '</div></div>';
@@ -1334,17 +1342,24 @@
       }, { root: box, rootMargin: '40px 0px', threshold: 0.2 });
       wallTiles.forEach(function (t) { wallIO.observe(t.el); });
     }
-    if (!store('wallTip')) { store('wallTip', '1'); toast('Toca un canal para verlo grande con sonido · desliza ↑ para devolverlo'); }
+    if (!store('wallTip')) {
+      store('wallTip', '1');
+      toast(IS_PHONE ? 'Toca un canal para verlo grande con sonido · desliza ↑ para devolverlo'
+                     : 'OK en un canal para verlo grande con sonido · ATRÁS para devolverlo');
+    }
   }
   function wallTeardown() {
     if (wallBig) wallCollapse(true);
     if (wallIO) { wallIO.disconnect(); wallIO = null; }
     wallTiles.forEach(wallStop);
+    var lostFocus = focused && focused.classList.contains('wt');
     wallTiles = []; wallShown = false; wallSig = '';
     var box = $('favWall');
     if (box) { box.innerHTML = ''; box.classList.add('hidden'); }
     $('channelGrid').classList.remove('hidden');
+    if (lostFocus) { focused = null; setFocus(wallToggleVisible() ? $('wallToggle') : document.querySelector('.chip.active')); }
   }
+  function wallToggleVisible() { return !$('wallToggle').classList.contains('hidden'); }
   // Decide qué cuadros reproducen: los visibles (hasta WALL_MAX) y siempre el agrandado
   function wallSchedule() {
     if (!wallShown) return;
@@ -1385,6 +1400,11 @@
   }
   function wallBigRect() {
     var W = window.innerWidth, H = window.innerHeight, m = 8, w, h;
+    if (!IS_PHONE) {                                                    // TV: grande al frente, con borde a la vista
+      W = document.documentElement.clientWidth || 1920; H = document.documentElement.clientHeight || 1080;
+      h = H * 0.82; w = h * 16 / 9;
+      return { left: (W - w) / 2, top: (H - h) / 2, width: w, height: h };
+    }
     if (W < H) { w = W - m * 2; h = w * 9 / 16; }                      // vertical: a lo ancho
     else { h = Math.min(H - m * 2, (W - m * 2) * 9 / 16); w = h * 16 / 9; } // horizontal: lo más grande posible
     return { left: (W - w) / 2, top: Math.max(m, (H - h) / 2 - (W < H ? H * 0.06 : 0)), width: w, height: h };
@@ -1404,6 +1424,7 @@
     if (wallBig) wallCollapse(true);
     wallBig = t;
     var inner = t.inner, r = inner.getBoundingClientRect();
+    t.el.classList.add('has-big');                            // sin zoom de foco: el video puede salir al frente
     inner.style.transition = 'none';
     inner.classList.add('big');
     wallPlace(inner, r);
@@ -1427,9 +1448,11 @@
     function done() {
       if (wallBig === t) return;
       inner.classList.remove('big', 'drag'); inner.style.cssText = '';
+      t.el.classList.remove('has-big');
       if (!wallBig) $('wallShade').classList.add('hidden');
       wallSchedule();
     }
+    if (!IS_PHONE || (focused && focused.classList.contains('wt'))) setFocus(t.el);   // el foco vuelve a su cuadro
     if (instant) { done(); return; }
     inner.classList.remove('drag');
     inner.style.transition = '';
@@ -1438,8 +1461,8 @@
     setTimeout(done, 300);
   }
 
-  $('wallToggle').addEventListener('click', function (e) {
-    e.stopPropagation();
+  $('wallToggle').addEventListener('click', function (e) { e.stopPropagation(); setFocus($('wallToggle')); wallToggle(); });
+  function wallToggle() {
     wallOn = !wallOn; store('favWall', wallOn ? '1' : '0');
     if (wallOn) {
       if (searchOpen) closeSearch(true);
@@ -1447,18 +1470,39 @@
       toast('Favoritos en vivo: activado');
     } else toast('Favoritos en vivo: desactivado');
     wallSync();
-  });
+  }
+  // Control remoto: OK en un cuadro lo agranda; con uno agrandado ◀ ▶ cambian de canal, OK = pantalla completa
+  function wallActivate(el) {
+    var t = wallTiles[+el.getAttribute('data-w')]; if (!t) return;
+    if (t === wallBig) { wallFull(t); return; }
+    if (t.failed) { t.failed = false; t.el.classList.remove('err'); }
+    wallExpand(t);
+  }
+  function wallFull(t) {
+    var list = listFor(FAV_GROUP), i = t.i;
+    wallCollapse(true);
+    playChannel(list, i, FAV_GROUP, 'full');
+  }
+  function wallKey(k) {                       // devuelve true si la tecla se usó
+    if (!wallBig) return false;
+    var n = wallTiles.length, t = wallBig;
+    if (k === KEY.LEFT || k === KEY.RIGHT) {
+      var nt = wallTiles[(t.i + (k === KEY.LEFT ? -1 : 1) + n) % n];
+      if (nt !== t) { wallCollapse(true); setFocus(nt.el); wallExpand(nt); }
+      return true;
+    }
+    if (k === KEY.UP) { wallCollapse(); return true; }
+    if (k === KEY.ENTER) { wallFull(t); return true; }
+    if (k === KEY.DOWN) return true;
+    return false;
+  }
   $('favWall').addEventListener('click', function (e) {
     e.stopPropagation();
     if (wallSwiped) { wallSwiped = false; return; }
     var tile = e.target.closest && e.target.closest('.wt'); if (!tile) return;
     var t = wallTiles[+tile.getAttribute('data-w')]; if (!t) return;
-    if (e.target.closest('.wt-full')) {                      // ⛶ abre el reproductor normal
-      var list = listFor(FAV_GROUP), i = t.i;
-      wallCollapse(true);
-      playChannel(list, i, FAV_GROUP, 'full');
-      return;
-    }
+    setFocus(t.el);
+    if (e.target.closest('.wt-full')) { wallFull(t); return; }   // ⛶ abre el reproductor normal
     if (t === wallBig) { if (e.target.closest('.wt-btn')) wallSetSound(t, t.video.muted); return; }
     if (t.failed) { t.failed = false; t.el.classList.remove('err'); }
     wallExpand(t);
