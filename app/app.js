@@ -453,7 +453,7 @@
     setTimeout(loadLogos, 0);
     if (!filtered.length) {
       var msg = activeGroup !== SEARCH_GROUP ? 'No hay canales en esta categoría.'
-        : (searchQuery.trim() ? 'No se encontraron canales con «' + escapeHtml(searchQuery.trim()) + '».' : 'Escribe el nombre del canal con el teclado de arriba.');
+        : (searchQuery.trim() ? 'No se encontraron canales con «' + escapeHtml(searchQuery.trim()) + '».' : (IS_PHONE ? 'Escribe el nombre del canal o toca el micrófono 🎤.' : 'Escribe el nombre del canal con el teclado de arriba.'));
       $('channelGrid').innerHTML = '<p class="status">' + msg + '</p>';
     }
   }
@@ -551,7 +551,7 @@
   }
   function updateSearchStatus() {
     var q = searchQuery.trim();
-    $('liveStatus').textContent = q ? filtered.length + ' resultado' + (filtered.length === 1 ? '' : 's') + ' para «' + q + '» · ▼ para ir a los resultados' : 'Buscar canal';
+    $('liveStatus').textContent = q ? filtered.length + ' resultado' + (filtered.length === 1 ? '' : 's') + ' para «' + q + '»' + (IS_PHONE ? '' : ' · ▼ para ir a los resultados') : 'Buscar canal';
   }
   function pressKey(k) {
     if (k === 'DEL') searchQuery = searchQuery.slice(0, -1);

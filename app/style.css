@@ -529,3 +529,12 @@ html.phone, html.phone body { width: 100%; height: 100%; overflow: hidden; }
 .tab.pipmove.hidden { display: none; }
 /* En TV las esquinas de arriba quedan bajo la barra superior (no tapan pestañas ni "Mover PiP") */
 html:not(.phone) .player.pip.pos-tl, html:not(.phone) .player.pip.pos-tr { top: 130px; }
+/* Buscador en celular: el cuadro se achica y el micrófono siempre queda visible (también con letra grande) */
+.phone .search { width: 100%; max-width: 100%; min-width: 0; }
+.phone .sbox { width: 100%; max-width: 100%; min-width: 0; flex-shrink: 1; overflow: hidden; }
+.phone .sbox input { flex: 1 1 0; width: 0; min-width: 0; text-overflow: ellipsis; }
+.phone .sbox .lupa, .phone .mic { flex: 0 0 auto; }
+.phone .view, .phone .live-head, .phone .group-bar { max-width: 100%; min-width: 0; overflow-x: hidden; }
+.phone .group-bar { overflow-x: auto; }
+.channels > p.status { grid-column: 1 / -1; }
+@media (min-width: 600px) and (min-height: 521px) { .phone .sbox { max-width: 720px; } }
