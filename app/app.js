@@ -9,6 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
+  var APP_BUILD = '1.9.2';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -1333,7 +1334,8 @@
   };
   getText('version.json').then(function (t) {
     var v = JSON.parse(t).version;
-    $('appVersion').textContent = 'FuturaTV versión ' + v + (IS_ANDROID ? ' · se actualiza sola desde internet' : '');
+    $('appVersion').textContent = 'FuturaTV versión ' + APP_BUILD + (IS_ANDROID ? ' · se actualiza sola desde internet' : '') +
+      (v !== APP_BUILD ? ' · ⚠ actualización incompleta (' + v + '): aprieta «Buscar actualización ahora»' : '');
   }).catch(function () { });
 
   // ---------- Muro de favoritos en vivo (celular) ----------

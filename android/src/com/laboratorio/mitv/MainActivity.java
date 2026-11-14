@@ -409,7 +409,8 @@ public class MainActivity extends Activity {
                 if (!base.endsWith("/")) base += "/";
                 JSONObject remote = new JSONObject(new String(httpGet(base + "version.json?t=" + System.currentTimeMillis()), "UTF-8"));
                 String version = remote.optString("version", "0");
-                if (compareVersions(version, cur.optString("version", "0")) <= 0) {
+                int cmp = compareVersions(version, cur.optString("version", "0"));
+                if (cmp < 0 || (cmp == 0 && !manual)) {   // a mano: con la misma versión se vuelve a bajar (repara archivos)
                     if (manual) js("window.mitvUpdateStatus && window.mitvUpdateStatus('ok')");
                     return;
                 }
