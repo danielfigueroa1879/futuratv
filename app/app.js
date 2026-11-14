@@ -706,6 +706,7 @@
 
   function playChannel(list, idx, group, newMode) {
     if (!list.length) return;
+    sidePrevStop();
     zapList = list; zapIdx = (idx + list.length) % list.length; zapGroup = group;
     nowCh = zapList[zapIdx];
     setMode(newMode || (mode === 'none' ? 'full' : mode));
@@ -752,6 +753,7 @@
   function setMode(m) {
     mode = m;
     if (IS_ANDROID && window.Android.setPlaying) { try { window.Android.setPlaying(m !== 'none'); } catch (e) { } }
+    if (m !== 'full') sidePrevStop();
     wallSync();
     var p = $('player');
     p.classList.toggle('hidden', m === 'none');
@@ -823,6 +825,7 @@
   }
   function closeSide() {
     sideOpen = false; clearTimeout(sideTimer);
+    sidePrevStop();
     $('side').classList.add('hidden');
   }
   function bumpSide() {
@@ -852,6 +855,56 @@
     }
     $('sideList').innerHTML = html || '<div class="srow empty">Sin canales</div>';
     $('sideCount').textContent = n ? (sideIdx + 1) + ' / ' + n : '';
+    sidePrevSchedule();
+  }
+
+  // ---------- TV: vista previa en vivo (solo imagen) del canal elegido en la lista lateral ----------
+  // Un solo video chico y sin sonido; se carga cuando te detienes medio segundo sobre un canal.
+  var prevHls = null, prevTimer = null, prevCh = null;
+  var PREV_HLS = { enableWorker: true, startLevel: 0, testBandwidth: false, abrEwmaDefaultEstimate: 300000,
+    capLevelToPlayerSize: true, maxBufferLength: 6, maxMaxBufferLength: 10, maxBufferSize: 4 * 1000 * 1000, backBufferLength: 0,
+    manifestLoadingTimeOut: 8000, levelLoadingTimeOut: 8000, fragLoadingTimeOut: 10000 };
+  function sidePrevStop() {
+    clearTimeout(prevTimer); prevCh = null;
+    var box = $('sidePrev'); if (!box) return;
+    box.classList.remove('show', 'ready', 'fail');
+    $('side').classList.remove('has-prev');
+    var v = box.querySelector('video');
+    if (prevHls) { try { prevHls.destroy(); } catch (e) { } prevHls = null; }
+    v.removeAttribute('src'); try { v.load(); } catch (e) { }
+  }
+  function sidePrevSchedule() {
+    if (IS_PHONE) return;
+    var c = sideList[sideIdx];
+    if (c !== prevCh) sidePrevStop();
+    if (!sideOpen || mode !== 'full' || !c || c.isCountry || c === nowCh) return;   // el que ya ves no necesita vista previa
+    var row = $('sideList').querySelector('.srow.sel'), box = $('sidePrev');
+    if (!row) return;
+    $('side').classList.add('has-prev');
+    box.style.top = ($('sideList').offsetTop + row.offsetTop + (row.offsetHeight - box.offsetHeight) / 2) + 'px';
+    if (c === prevCh) return;
+    prevTimer = setTimeout(function () { sidePrevLoad(c); }, 500);
+  }
+  function sidePrevLoad(c) {
+    if (!sideOpen || mode !== 'full' || sideList[sideIdx] !== c) return;
+    prevCh = c;
+    var box = $('sidePrev'), v = box.querySelector('video');
+    box.classList.add('show');
+    var shown = function () { if (prevCh === c) box.classList.add('ready'); };
+    v.onplaying = shown;
+    v.ontimeupdate = function () { if (v.currentTime > 0) shown(); };
+    if (window.Hls && window.Hls.isSupported()) {
+      prevHls = new window.Hls(PREV_HLS);
+      prevHls.loadSource(c.url);
+      prevHls.attachMedia(v);
+      prevHls.on(window.Hls.Events.MANIFEST_PARSED, function () {
+        try { prevHls.autoLevelCapping = 0; } catch (e) { }
+        var p = v.play(); if (p && p.catch) p.catch(function () { });
+      });
+      prevHls.on(window.Hls.Events.ERROR, function (_, d) { if (d.fatal && prevCh === c) { box.classList.add('fail'); } });
+    } else {
+      v.src = c.url; var p = v.play(); if (p && p.catch) p.catch(function () { });
+    }
   }
   function sideMove(step) {
     if (!sideList.length) return;

@@ -662,3 +662,20 @@ html:not(.phone) .wt { transition: none; }
 html:not(.phone) .wt.focused { transform: none; }
 html:not(.phone) .wt-in { transform: none; }
 html:not(.phone) .wt-in video { transition: none; }
+
+/* ---- TV: vista previa en vivo en la lista lateral (solo imagen) ---- */
+.side-prev {
+  position: absolute; right: 78px; top: 0; width: 128px; height: 72px; border-radius: 8px; overflow: hidden;
+  background: #0b0f1a; box-shadow: 0 0 0 2px #8b5cf6; display: none; pointer-events: none; z-index: 2;
+}
+.side-prev video { width: 100%; height: 100%; object-fit: cover; opacity: 0; }
+.side-prev.ready video { opacity: 1; }
+.side-prev::before {                           /* mientras carga: rueda chica */
+  content: ''; position: absolute; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px;
+  border: 3px solid rgba(255,255,255,.25); border-top-color: #8b5cf6; border-radius: 50%; animation: spin .8s linear infinite;
+}
+.side-prev.ready::before, .side-prev.fail::before { display: none; }
+.side-prev.fail::after { content: 'Sin señal'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 15px; color: #9aa6c2; }
+.side.has-prev .side-prev { display: block; }
+.side.has-prev .srow.sel .nm { margin-right: 150px; }
+.phone .side-prev { display: none !important; }
