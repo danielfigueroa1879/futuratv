@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '1.9.9';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.0.0';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -825,8 +825,8 @@
   function openSide() {
     sideOpen = true; hbFocus = -1;
     sideGroup = sideGroups().indexOf(zapGroup) >= 0 ? zapGroup : 'Todos';
+    $(LIST_H ? 'hbar' : 'side').classList.remove('hidden');   // primero visible: así la vista previa se ubica bien
     renderSide(true);
-    $(LIST_H ? 'hbar' : 'side').classList.remove('hidden');
     $('player').classList.toggle('list-h', LIST_H);
     if (LIST_H) { hbMarkCtrl(); hbTimeTick(); }
     $('osd').classList.add('fade');
@@ -1007,13 +1007,13 @@
     var box = $('sidePrev'), r, P = $('player').getBoundingClientRect();
     if (LIST_H) {                                  // horizontal: cubre la imagen de la tarjeta elegida
       var card = $('hbTrack').querySelector('.hcard.sel'); if (!card) return;
-      r = card.getBoundingClientRect();
+      r = card.getBoundingClientRect(); if (r.width < 20) return;   // aún sin tamaño: no mostrar nada en la esquina
       box.querySelector('.sp-lab').innerHTML = card.querySelector('.hlab').innerHTML;   // el nombre va sobre la imagen en vivo
       box.style.left = (r.left - P.left) + 'px'; box.style.top = (r.top - P.top) + 'px';
       box.style.width = r.width + 'px'; box.style.height = r.height + 'px';
     } else {                                       // vertical: recuadro chico entre el nombre y la estrella
       var row = $('sideList').querySelector('.srow.sel'); if (!row) return;
-      r = row.getBoundingClientRect(); var S = $('side').getBoundingClientRect();
+      r = row.getBoundingClientRect(); var S = $('side').getBoundingClientRect(); if (r.height < 10) return;
       box.style.width = '128px'; box.style.height = '72px';
       box.style.left = (S.right - P.left - 78 - 128) + 'px'; box.style.top = (r.top - P.top + (r.height - 72) / 2) + 'px';
     }
