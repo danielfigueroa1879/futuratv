@@ -422,7 +422,7 @@ public class MainActivity extends Activity {
                 for (int i = 0; i < files.length(); i++) {
                     String name = files.getString(i);
                     if (name.contains("..") || name.startsWith("/") || name.contains("\\")) throw new Exception("nombre inválido");
-                    byte[] data = httpGet(base + name.replace(" ", "%20"));
+                    byte[] data = httpGet(base + name.replace(" ", "%20") + "?v=" + version);   // evita copias viejas de la caché
                     File out = new File(tmp, name);
                     out.getParentFile().mkdirs();
                     FileOutputStream fo = new FileOutputStream(out);
