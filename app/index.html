@@ -59,7 +59,7 @@
     </div>
     <p class="hint">
       En un canal, <b>mantén OK</b> (o usa el botón MENU) para marcarlo como favorito ★ u ocultarlo.
-      Botón amarillo = favorito · botón rojo = ocultar · botón azul = PiP.
+      Botón amarillo = favorito · botón rojo = ocultar · botón azul = PiP · botón verde = mover la ventana PiP.
     </p>
     <p class="hint">
       Puedes usar cualquier lista M3U/M3U8 a la que tengas acceso legal.
@@ -79,13 +79,20 @@
         <div class="osd-hint">▲▼ cambiar canal · OK o ◀ lista de canales · ATRÁS minimizar (PiP)<br>Mantén OK o botón MENU: favorito / ocultar · Amarillo ★ · Rojo ocultar</div>
       </div>
     </div>
-    <div class="pip-label"><span id="pipName"></span><small>OK en este canal = pantalla completa · ATRÁS = cerrar</small></div>
+    <div class="pip-label"><span id="pipName"></span><small>OK en este canal = pantalla completa · VERDE = mover · ATRÁS = cerrar</small></div>
     <aside class="side hidden" id="side">
       <div class="side-head" id="sideHead"></div>
       <div class="side-count" id="sideCount"></div>
       <div class="side-list" id="sideList"></div>
       <div class="side-foot">▲▼ elegir · OK ver · ◀▶ categoría · mantén OK: opciones · ATRÁS cerrar</div>
     </aside>
+    <div class="ptools hidden" id="ptools">
+      <button data-pt="close" aria-label="Cerrar"><svg class="ico" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      <button data-pt="prev" aria-label="Canal anterior"><svg class="ico" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+      <button data-pt="list" class="main" aria-label="Lista de canales"><svg class="ico" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg><span>Canales</span></button>
+      <button data-pt="next" aria-label="Canal siguiente"><svg class="ico" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>
+      <button data-pt="pip" aria-label="Ventana chica"><svg class="ico" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><rect x="12" y="11" width="7" height="6" rx="1"/></svg></button>
+    </div>
     <div class="spinner" id="spinner"></div>
     <div class="player-error hidden" id="playerError"></div>
   </div>

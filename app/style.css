@@ -270,3 +270,127 @@ html, body {
 .ch.country .globe { width: 80px; height: 80px; font-size: 46px; background: transparent; }
 .ch.country .nm { font-size: 24px; font-weight: 700; }
 .ch.country .cnt { font-size: 18px; color: #9aa6c2; }
+
+/* =====================================================================
+   CELULAR / TABLET (html.phone): diseño táctil para pantallas pequeñas
+   ===================================================================== */
+.ptools { display: none; }
+html.phone, html.phone body { width: 100%; height: 100%; overflow: hidden; }
+.phone body {
+  display: flex; flex-direction: column;
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+}
+.phone .topbar { flex-wrap: wrap; gap: 8px 12px; padding: calc(env(safe-area-inset-top) + 10px) 14px 6px; }
+.phone .brand { font-size: 24px; gap: 8px; letter-spacing: 1px; }
+.phone .brand img { width: 34px; height: 34px; border-radius: 8px; }
+.phone .brand .b2 { margin-left: -6px; }
+.phone .clock { font-size: 16px; margin-left: auto; }
+.phone .tabs { order: 3; width: 100%; flex: none; gap: 6px; overflow-x: auto; }
+.phone .tabs::-webkit-scrollbar { display: none; }
+.phone .tab { font-size: 15px; padding: 9px 16px; white-space: nowrap; }
+.phone .tab.focused { background: transparent; color: #9aa6c2; }
+.phone .tab.active, .phone .tab.active.focused { background: rgba(139,92,246,.35); color: #fff; }
+
+.phone .view { flex: 1; min-height: 0; height: auto; padding: 6px 14px calc(env(safe-area-inset-bottom) + 8px); display: flex; flex-direction: column; }
+.phone .view.hidden { display: none !important; }
+.phone .view h2 { font-size: 17px; margin-bottom: 10px; }
+.phone .focused { transform: none; outline: 0 !important; box-shadow: none; }
+
+.phone .grid { flex: 1; min-height: 0; max-height: none; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px; padding: 2px; align-content: start; -webkit-overflow-scrolling: touch; }
+.phone .tile { height: 92px; font-size: 13px; border-radius: 14px; gap: 6px; }
+.phone .tile .glyph { font-size: 28px; }
+.phone .channels { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px; max-height: none; }
+.phone .ch { height: 100px; font-size: 12px; padding: 8px 6px; gap: 6px; border-radius: 12px; }
+.phone .ch img { max-height: 42px; }
+.phone .ch .ph { width: 42px; height: 42px; font-size: 18px; }
+.phone .ch:active { transform: scale(.96); }
+.phone .badge { font-size: 9px; top: 4px; padding: 1px 6px; border-radius: 6px; }
+.phone .badge.live { left: 4px; }
+.phone .badge.fav { font-size: 15px; right: 5px; padding: 0; }
+.phone .ch.country .globe { width: 44px; height: 44px; font-size: 28px; }
+.phone .ch.country .nm { font-size: 13px; }
+.phone .ch.country .cnt { font-size: 11px; }
+
+.phone .live-head { flex-wrap: wrap; gap: 8px; align-items: center; }
+.phone .live-head h2 { display: none; }
+.phone .group-bar { max-width: 100%; width: 100%; padding: 2px 0; gap: 8px; }
+.phone .chip { font-size: 13px; padding: 8px 14px; border-radius: 20px; }
+.phone .chip.focused { transform: none; }
+.phone .search-btn { font-size: 14px; padding: 8px 16px; }
+.phone .search-btn .ico { font-size: 18px; }
+.phone .status { font-size: 12px; margin-bottom: 6px; }
+.phone .search { flex-direction: column; gap: 8px; margin: 2px 0 8px; }
+.phone .sbox { width: 100%; padding: 4px 6px 4px 12px; border-radius: 14px; gap: 8px; }
+.phone .sbox .lupa { font-size: 22px; }
+.phone .sbox input { font-size: 17px; padding: 8px 0; -webkit-user-select: text; user-select: text; }
+.phone .mic { width: 44px; height: 44px; font-size: 22px; }
+.phone .kbd { display: none; }
+.phone .searching .channels { max-height: none; }
+
+.phone #view-settings { overflow-y: auto; }
+.phone .field span { font-size: 14px; }
+.phone .field input { font-size: 15px; padding: 12px; -webkit-user-select: text; user-select: text; }
+.phone .row { flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+.phone .btn { font-size: 15px; padding: 12px 18px; }
+.phone .hint { font-size: 13px; }
+.phone .view h2.sub { font-size: 16px; }
+
+/* Reproductor en celular */
+.phone .osd { left: 12px; right: 12px; bottom: auto; top: calc(env(safe-area-inset-top) + 12px); padding: 10px 14px; gap: 12px; border-radius: 14px; }
+.phone .osd img { height: 34px; max-width: 70px; }
+.phone .osd-name { font-size: 17px; }
+.phone .osd-hint { display: none; }
+.phone .player-error { font-size: 15px; padding: 14px 18px; width: 85%; }
+.phone .spinner { width: 54px; height: 54px; margin: -27px; border-width: 6px; }
+.phone .ptools {
+  display: flex; position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom) + 18px);
+  gap: 12px; align-items: center; padding: 10px 14px; border-radius: 40px; z-index: 6;
+  background: rgba(8,16,51,.82); border: 1px solid rgba(103,232,249,.35); box-shadow: 0 0 24px rgba(34,211,238,.2);
+}
+.phone .ptools.hidden { display: none !important; }
+.phone .ptools button {
+  width: 48px; height: 48px; border-radius: 50%; border: 1px solid rgba(103,232,249,.4);
+  background: rgba(30,58,138,.5); color: #a5f3fc; font-size: 24px; display: flex; align-items: center; justify-content: center; gap: 6px;
+}
+.phone .ptools button.main { width: auto; padding: 0 18px; border-radius: 24px; font-size: 22px; color: #fff;
+  background: linear-gradient(135deg, rgba(34,211,238,.7), rgba(139,92,246,.8)); }
+.phone .ptools button.main span { font-size: 15px; font-weight: 700; }
+.phone .ptools button:active { transform: scale(.92); }
+.phone .player.pip { width: 58vw; height: calc(58vw * 9 / 16); max-width: 380px; max-height: 214px; right: 10px; bottom: calc(env(safe-area-inset-bottom) + 10px); border-radius: 12px; }
+.phone .pip-label { font-size: 13px; padding: 6px 10px; }
+.phone .pip-label small { display: none; }
+.phone .side { width: min(82vw, 360px); padding: calc(env(safe-area-inset-top) + 12px) 0 10px; touch-action: none; }
+.phone .side-head { font-size: 17px; padding: 0 14px 6px; }
+.phone .side-count { padding: 0 14px 6px; font-size: 12px; }
+.phone .srow { height: 54px; font-size: 15px; padding: 0 14px; gap: 10px; }
+.phone .srow img { width: 54px; height: 34px; }
+.phone .srow .ph { width: 34px; height: 34px; margin: 0 10px; font-size: 15px; }
+.phone .side-foot { display: none; }
+
+.phone .menu { width: min(92vw, 420px); padding: 20px; border-radius: 18px; }
+.phone .menu-title { font-size: 19px; margin-bottom: 14px; }
+.phone .mbtn { font-size: 16px; padding: 14px 16px; }
+.phone .mbtn.focused { background: #222c4d; color: #fff; }
+.phone .voice-panel { min-width: 0; width: calc(100vw - 24px); bottom: calc(env(safe-area-inset-bottom) + 12px); padding: 14px 16px; gap: 14px; border-radius: 20px; }
+.phone .orb { width: 80px; height: 80px; }
+.phone .orb .level { inset: 14px; }
+.phone .orb .core { inset: 20px; font-size: 20px; }
+.phone .voice-msg { font-size: 14px; }
+.phone .voice-text { font-size: 20px; min-height: 28px; margin: 4px 0 6px; }
+.phone .bars { height: 18px; }
+.phone .voice-hint { display: none; }
+.phone .toast { font-size: 14px; padding: 10px 18px; bottom: calc(env(safe-area-inset-bottom) + 20px); max-width: 90vw; text-align: center; }
+.phone .splash img { object-fit: contain; }
+@media (orientation: landscape) {
+  .phone .channels { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
+}
+
+/* ---- PiP movible (4 esquinas) ---- */
+.player.pip { cursor: grab; touch-action: none; }
+.player.pip.dragging { cursor: grabbing; box-shadow: 0 24px 70px rgba(0,0,0,.9), 0 0 0 4px #22d3ee; }
+.player.pip.pos-bl { right: auto; left: 40px; }
+.player.pip.pos-tl { right: auto; left: 40px; bottom: auto; top: 40px; }
+.player.pip.pos-tr { bottom: auto; top: 40px; }
+.phone .player.pip.pos-bl { right: auto; left: 10px; }
+.phone .player.pip.pos-tl { right: auto; left: 10px; bottom: auto; top: calc(env(safe-area-inset-top) + 10px); }
+.phone .player.pip.pos-tr { bottom: auto; top: calc(env(safe-area-inset-top) + 10px); }

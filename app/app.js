@@ -10,6 +10,20 @@
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
   var IS_ANDROID = typeof window.Android !== 'undefined';
+  // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
+  var IS_PHONE = (function () {
+    if (IS_ANDROID) {
+      try { return typeof window.Android.isTV === 'function' ? !window.Android.isTV() : false; } catch (e) { return false; }
+    }
+    var touch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+    return touch && Math.min(screen.width, screen.height) < 900;
+  })();
+  if (/[?&]modo=celular/.test(location.search)) IS_PHONE = true;   // para probar en un PC
+  if (IS_PHONE) {
+    document.documentElement.classList.add('phone');
+    var vp = document.querySelector('meta[name="viewport"]');
+    if (vp) vp.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover');
+  }
   var APPS = [
     { name: 'YouTube',      id: 'youtube.leanback.v4',        color: '#ff0033', glyph: '▶', web: 'https://www.youtube.com/tv',
       android: ['com.google.android.youtube.tv', 'com.amazon.firetv.youtube', 'com.google.android.youtube'] },
@@ -520,7 +534,7 @@
     $('searchPanel').classList.remove('hidden');
     $('searchBtn').classList.add('active');
     renderGroups(); updateSearch();
-    setFocus(document.querySelector('.key[data-k="A"]'));
+    setFocus(IS_PHONE ? $('searchInput') : document.querySelector('.key[data-k="A"]'));   // en celular, teclado del teléfono
   }
   function closeSearch(keepGroup) {
     searchOpen = false; searchQuery = '';
@@ -729,8 +743,9 @@
     var p = $('player');
     p.classList.toggle('hidden', m === 'none');
     p.classList.toggle('pip', m === 'pip');
-    if (m !== 'full') closeSide();
-    if (m === 'full') showOsd();
+    applyPipPos();
+    if (m !== 'full') { closeSide(); $('ptools').classList.add('hidden'); }
+    if (m === 'full') { if (IS_PHONE) showTools(); else showOsd(); }
   }
   function minimize() {           // pantalla completa -> PiP
     setMode('pip');
@@ -755,7 +770,7 @@
   }
   function playError() {
     $('spinner').classList.add('hidden');
-    $('playerError').textContent = 'Este canal no está disponible ahora. Prueba ▲▼ para cambiar.';
+    $('playerError').textContent = IS_PHONE ? 'Este canal no está disponible ahora. Toca la pantalla y usa ◀ ▶ para cambiar.' : 'Este canal no está disponible ahora. Prueba ▲▼ para cambiar.';
     $('playerError').classList.remove('hidden');
   }
   function stopVideo() {
@@ -804,7 +819,7 @@
     updateSideMarks();
   }
   // Solo se dibujan las filas visibles: moverse por la lista es instantáneo aunque tenga 500 canales
-  var SIDE_ROWS = 10;
+  var SIDE_ROWS = IS_PHONE ? 14 : 10;
   function updateSideMarks() {
     var n = sideList.length;
     var start = Math.max(0, Math.min(sideIdx - Math.floor(SIDE_ROWS / 2), n - SIDE_ROWS));
@@ -836,6 +851,7 @@
     $('menuTitle').textContent = c.name;
     var acts = [['play', '▶  Ver en pantalla completa']];
     if (!(mode === 'pip' && nowCh === c)) acts.push(['pip', '⧉  Ver en ventana chica (PiP)']);
+    else acts.push(['pipmove', '⇲  Mover la ventana PiP a otra esquina']);
     acts.push(isFav(c) ? ['unfav', '☆  Quitar de favoritos'] : ['fav', '★  Agregar a favoritos']);
     acts.push(isHidden(c) ? ['unhide', '👁  Mostrar canal de nuevo'] : ['hide', '🚫  Ocultar canal (no se ve)']);
     acts.push(['cancel', 'Cancelar']);
@@ -888,6 +904,7 @@
       else { var j = filtered.indexOf(c); playChannel(filtered.slice(), j < 0 ? 0 : j, activeGroup, 'pip'); }
       minimize();
     }
+    else if (act === 'pipmove') cyclePip();
     else if (act === 'fav' || act === 'unfav') toggleFav(c);
     else if (act === 'hide') hideChannel(c);
     else if (act === 'unhide') unhideChannel(c);
@@ -993,6 +1010,7 @@
 
     // Teclas especiales: colores del control y MENU
     if (k === KEY.MENU || k === KEY.M) { if (!typing) { openMenu(contextChannel()); e.preventDefault(); } return; }
+    if (k === KEY.GREEN && mode === 'pip') { cyclePip(); e.preventDefault(); return; }
     if (k === KEY.YELLOW || k === KEY.GREEN) { var cf = contextChannel(); if (cf) toggleFav(cf); e.preventDefault(); return; }
     if (k === KEY.RED) { var ch = contextChannel(); if (ch) { if (isHidden(ch)) unhideChannel(ch); else hideChannel(ch); } e.preventDefault(); return; }
     if (k === KEY.BLUE || (k === KEY.P && !typing)) {
@@ -1056,10 +1074,16 @@
 
   // Puntero del Magic Remote / mouse
   document.addEventListener('mouseover', function (e) {
+    if (IS_PHONE) return;                    // en celular el "hover" del dedo no mueve el foco
     var el = e.target.closest && e.target.closest('.focusable');
     if (el && mode !== 'full' && (!menuOpen || el.classList.contains('mbtn'))) setFocus(el);
   });
   document.addEventListener('click', function (e) {
+    if (suppressClick) { suppressClick = false; e.preventDefault(); return; }
+    if (Date.now() - pipDragEnd < 400) { e.preventDefault(); return; }
+    var pt = e.target.closest && e.target.closest('[data-pt]');
+    if (pt) { playerTool(pt.getAttribute('data-pt')); return; }
+    if (IS_PHONE && mode === 'full' && !sideOpen && e.target.closest && e.target.closest('#player')) { showTools(); return; }
     var row = e.target.closest && e.target.closest('.srow');
     if (row && row.hasAttribute('data-s')) { sideIdx = +row.getAttribute('data-s'); okShort(); return; }
     if (mode === 'full' && !sideOpen && e.target.closest && e.target.closest('#player')) { openSide(); return; }
@@ -1068,9 +1092,128 @@
     if (el) { setFocus(el); activate(el); }
   });
   document.addEventListener('contextmenu', function (e) {
+    if (IS_PHONE) { e.preventDefault(); return; }    // en celular se usa "mantener presionado"
     var el = e.target.closest && e.target.closest('[data-ch]');
     if (el) { e.preventDefault(); setFocus(el); openMenu(filtered[+el.getAttribute('data-ch')]); }
   });
+
+  // ---------- Celular: gestos táctiles ----------
+  var suppressClick = false, pressTimer = null, touchY0 = 0, touchIdx0 = 0, touchMoved = false;
+  function pressTarget(t) { return t.closest && (t.closest('[data-ch]') || t.closest('.srow[data-s]')); }
+  document.addEventListener('touchstart', function (e) {
+    var t = e.touches[0];
+    touchMoved = false; touchY0 = t.clientY; touchIdx0 = sideIdx;
+    var el = pressTarget(e.target);
+    clearTimeout(pressTimer);
+    if (!el) return;
+    pressTimer = setTimeout(function () {      // mantener presionado = opciones del canal
+      if (touchMoved) return;
+      suppressClick = true;
+      var c = el.hasAttribute('data-s') ? sideList[+el.getAttribute('data-s')] : filtered[+el.getAttribute('data-ch')];
+      if (c && !c.isCountry) { if (navigator.vibrate) navigator.vibrate(30); openMenu(c); }
+    }, 550);
+  }, { passive: true });
+  document.addEventListener('touchmove', function (e) {
+    var dy = e.touches[0].clientY - touchY0;
+    if (Math.abs(dy) > 10) { touchMoved = true; clearTimeout(pressTimer); }
+    // Deslizar el dedo sobre la lista lateral la recorre
+    if (sideOpen && e.target.closest && e.target.closest('#side') && sideList.length) {
+      var rowH = ($('sideList').firstChild && $('sideList').firstChild.offsetHeight) || 56;
+      var idx = Math.max(0, Math.min(sideList.length - 1, touchIdx0 - Math.round(dy / rowH)));
+      if (idx !== sideIdx) { sideIdx = idx; updateSideMarks(); bumpSide(); }
+      if (e.cancelable) e.preventDefault();
+    }
+  }, { passive: false });
+  document.addEventListener('touchend', function () {
+    clearTimeout(pressTimer);
+    if (touchMoved && sideOpen) suppressClick = true;   // fue un deslizamiento, no un toque
+  }, { passive: true });
+
+  // ---------- PiP movible: arrastrar (dedo o puntero) o botón VERDE ----------
+  var PIP_POS = ['br', 'bl', 'tl', 'tr'];
+  var PIP_NAMES = { br: 'abajo a la derecha', bl: 'abajo a la izquierda', tl: 'arriba a la izquierda', tr: 'arriba a la derecha' };
+  var pipPos = PIP_POS.indexOf(store('pipPos')) >= 0 ? store('pipPos') : 'br';
+  var pipDrag = null, pipDragEnd = 0;
+  function applyPipPos() {
+    var p = $('player');
+    if (!PIP_POS) return;
+    PIP_POS.forEach(function (c) { p.classList.toggle('pos-' + c, c === pipPos); });
+    if (!pipDrag) { p.style.transition = ''; p.style.transform = ''; }
+  }
+  function setPipPos(c, fromRect) {
+    var p = $('player');
+    pipPos = c; store('pipPos', c);
+    p.style.transition = 'none'; p.style.transform = '';
+    applyPipPos();
+    if (fromRect) {                          // animación suave hasta la esquina
+      var to = p.getBoundingClientRect();
+      p.style.transform = 'translate(' + (fromRect.left - to.left) + 'px,' + (fromRect.top - to.top) + 'px)';
+      void p.offsetWidth;
+      p.style.transition = 'transform .22s ease-out';
+      p.style.transform = '';
+    }
+  }
+  function cyclePip() {
+    if (mode !== 'pip') return;
+    var p = $('player'), from = p.getBoundingClientRect();
+    setPipPos(PIP_POS[(PIP_POS.indexOf(pipPos) + 1) % PIP_POS.length], from);
+    toast('Ventana PiP: ' + PIP_NAMES[pipPos]);
+  }
+  function pipDown(x, y, target) {
+    if (mode !== 'pip' || !target.closest || !target.closest('#player')) return false;
+    var r = $('player').getBoundingClientRect();
+    pipDrag = { x: x, y: y, r: r, moved: false, dx: 0, dy: 0 };
+    return true;
+  }
+  function pipMove(x, y) {
+    if (!pipDrag) return false;
+    var d = pipDrag, W = window.innerWidth, H = window.innerHeight;
+    d.dx = Math.max(-d.r.left, Math.min(W - d.r.right, x - d.x));
+    d.dy = Math.max(-d.r.top, Math.min(H - d.r.bottom, y - d.y));
+    if (!d.moved && Math.abs(x - d.x) + Math.abs(y - d.y) < 10) return true;
+    d.moved = true;
+    var p = $('player');
+    p.style.transition = 'none';
+    p.style.transform = 'translate(' + d.dx + 'px,' + d.dy + 'px)';
+    p.classList.add('dragging');
+    return true;
+  }
+  function pipUp() {
+    if (!pipDrag) return;
+    var d = pipDrag; pipDrag = null;
+    $('player').classList.remove('dragging');
+    if (!d.moved) return;                  // fue un toque: lo maneja el click
+    pipDragEnd = Date.now();
+    var cx = (d.r.left + d.r.right) / 2 + d.dx, cy = (d.r.top + d.r.bottom) / 2 + d.dy;
+    var c = (cy < window.innerHeight / 2 ? 't' : 'b') + (cx < window.innerWidth / 2 ? 'l' : 'r');
+    setPipPos(c, { left: d.r.left + d.dx, top: d.r.top + d.dy });
+  }
+  $('player').addEventListener('touchstart', function (e) { pipDown(e.touches[0].clientX, e.touches[0].clientY, e.target); }, { passive: true });
+  $('player').addEventListener('touchmove', function (e) {
+    if (pipMove(e.touches[0].clientX, e.touches[0].clientY) && e.cancelable) e.preventDefault();
+  }, { passive: false });
+  $('player').addEventListener('touchend', pipUp);
+  $('player').addEventListener('touchcancel', pipUp);
+  $('player').addEventListener('mousedown', function (e) { if (pipDown(e.clientX, e.clientY, e.target)) e.preventDefault(); });
+  document.addEventListener('mousemove', function (e) { if (pipDrag) pipMove(e.clientX, e.clientY); });
+  document.addEventListener('mouseup', pipUp);
+
+  // Botones táctiles del reproductor
+  var toolsTimer = null;
+  function showTools() {
+    $('ptools').classList.remove('hidden');
+    showOsd();
+    clearTimeout(toolsTimer);
+    toolsTimer = setTimeout(function () { $('ptools').classList.add('hidden'); }, 4500);
+  }
+  function playerTool(t) {
+    if (t === 'close') { stopPlayer(); return; }
+    if (t === 'pip') { minimize(); return; }
+    if (t === 'list') { if (mode !== 'full') setMode('full'); $('ptools').classList.add('hidden'); openSide(); return; }
+    if (t === 'prev') { zap(-1); showTools(); return; }
+    if (t === 'next') { zap(1); showTools(); return; }
+    if (t === 'full') { setMode('full'); showTools(); return; }
+  }
 
   // Reloj
   function tick() {
