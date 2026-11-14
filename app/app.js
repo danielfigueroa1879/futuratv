@@ -799,7 +799,11 @@
     $('osd').classList.remove('fade');
     clearTimeout(osdTimer); osdTimer = setTimeout(function () { $('osd').classList.add('fade'); }, 5000);
   }
-  $('video').addEventListener('playing', function () { $('spinner').classList.add('hidden'); $('video').classList.add('ready'); });
+  // Se muestra el video apenas hay imagen (algunos TV/celulares no avisan "playing")
+  function videoShown() { $('spinner').classList.add('hidden'); $('video').classList.add('ready'); }
+  $('video').addEventListener('playing', videoShown);
+  $('video').addEventListener('loadeddata', function () { $('video').classList.add('ready'); });
+  $('video').addEventListener('timeupdate', function () { if ($('video').currentTime > 0) videoShown(); });
   $('video').addEventListener('waiting', function () { $('spinner').classList.remove('hidden'); });
   $('video').addEventListener('error', function () { if (!hls) playError(); });
 
@@ -1330,7 +1334,9 @@
     }).join('');
     wallTiles = list.map(function (c, i) {
       var el = box.children[i], t = { c: c, i: i, el: el, inner: el.firstChild, video: el.querySelector('video'), hls: null, live: false, visible: !window.IntersectionObserver, failed: false };
-      t.video.addEventListener('playing', function () { if (t.live) { el.classList.remove('loading'); el.classList.add('ready'); } });
+      var shown = function () { if (t.live) { el.classList.remove('loading'); el.classList.add('ready'); } };
+      t.video.addEventListener('playing', shown);
+      t.video.addEventListener('timeupdate', function () { if (t.video.currentTime > 0 && !el.classList.contains('ready')) shown(); });
       t.video.addEventListener('waiting', function () { if (t.live) el.classList.add('loading'); });
       t.video.addEventListener('error', function () { if (t.live && !t.hls) wallFail(t); });
       return t;
