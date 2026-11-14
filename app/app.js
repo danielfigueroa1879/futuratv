@@ -1357,6 +1357,7 @@
   function wallTeardown() {
     if (wallBig) wallCollapse(true);
     if (wallIO) { wallIO.disconnect(); wallIO = null; }
+    wallQueue = [];
     wallTiles.forEach(wallStop);
     var lostFocus = focused && focused.classList.contains('wt');
     wallTiles = []; wallShown = false; wallSig = '';
@@ -1367,15 +1368,26 @@
   }
   function wallToggleVisible() { return !$('wallToggle').classList.contains('hidden'); }
   // Decide qué cuadros reproducen: los visibles (hasta WALL_MAX) y siempre el agrandado
+  var wallQueue = [], wallQueueTimer = null;
   function wallSchedule() {
     if (!wallShown) return;
+    if (wallBig) { if (!wallBig.live) wallStart(wallBig); return; }   // con uno agrandado no se tocan los demás
     var n = 0;
+    wallQueue = [];
     wallTiles.forEach(function (t) {
-      var want = t === wallBig || (t.visible && !t.failed && n < WALL_MAX);
-      if (want && t !== wallBig) n++;
-      if (want && !t.live) wallStart(t);
+      var want = t.visible && !t.failed && n < WALL_MAX;
+      if (want) n++;
+      if (want && !t.live) wallQueue.push(t);
       else if (!want && t.live) wallStop(t);
     });
+    wallKick();
+  }
+  // Arranca los videos de a uno (escalonado): evita el tirón de abrir 10 a la vez
+  function wallKick() {
+    if (wallQueueTimer || !wallQueue.length) return;
+    var t = wallQueue.shift();
+    if (wallShown && !wallBig && !t.live && t.visible && !t.failed && wallTiles.indexOf(t) >= 0) wallStart(t);
+    wallQueueTimer = setTimeout(function () { wallQueueTimer = null; wallKick(); }, IS_PHONE ? 150 : 300);
   }
   function wallStart(t) {
     t.live = true; t.failed = false;
@@ -1386,7 +1398,11 @@
       t.hls = new window.Hls(WALL_HLS);
       t.hls.loadSource(t.c.url);
       t.hls.attachMedia(v);
-      t.hls.on(window.Hls.Events.MANIFEST_PARSED, function () { var p = v.play(); if (p && p.catch) p.catch(function () { }); });
+      t.hls.on(window.Hls.Events.MANIFEST_PARSED, function () {
+        wallQuality(t, t === wallBig);
+        if (wallBig && t !== wallBig) return;                 // hay uno agrandado: este espera
+        var p = v.play(); if (p && p.catch) p.catch(function () { });
+      });
       t.hls.on(window.Hls.Events.ERROR, function (_, d) { if (d.fatal) wallFail(t); });
     } else {
       v.src = t.c.url;
@@ -1419,28 +1435,51 @@
     inner.style.left = r.left + 'px'; inner.style.top = r.top + 'px';
     inner.style.width = r.width + 'px'; inner.style.height = r.height + 'px';
   }
+  // Transform que lleva el recuadro grande (B) a la posición/tamaño de r (técnica FLIP: solo GPU)
+  function wallFlip(r, B) {
+    return 'translate(' + (r.left - B.left) + 'px,' + (r.top - B.top) + 'px) scale(' + (r.width / B.width) + ',' + (r.height / B.height) + ')';
+  }
   function wallSetSound(t, on) {
     t.video.muted = !on;
     t.el.querySelector('.wt-btn').innerHTML = on ? ICO_SOUND : ICO_MUTED;
     t.el.classList.toggle('sound', on);
     if (on) { var p = t.video.play(); if (p && p.catch) p.catch(function () { }); }
   }
+  // Calidad: cuadros chicos en la más baja; el agrandado elige solo según su tamaño
+  function wallQuality(t, big) {
+    if (!t.hls) return;
+    try { t.hls.autoLevelCapping = big ? -1 : 0; } catch (e) { }
+  }
+  // Mientras hay uno agrandado los demás se pausan: todo el equipo trabaja para el del frente
+  function wallHold(t, hold) {
+    if (!t.live) return;
+    var v = t.video;
+    if (hold) { try { v.pause(); } catch (e) { } return; }   // la descarga se frena sola al llenar el búfer chico
+    try {                                                    // si quedó atrás, vuelve al directo
+      var live = t.hls && t.hls.liveSyncPosition;
+      if (live && v.currentTime < live - 8) v.currentTime = live;
+    } catch (e) { }
+    var play = function () { if (t.live && wallBig !== t && v.paused) { var p = v.play(); if (p && p.catch) p.catch(function () { }); } };
+    play(); setTimeout(play, 600);
+  }
   function wallExpand(t) {
     if (wallBig === t) return;
     if (wallBig) wallCollapse(true);
     wallBig = t;
-    var inner = t.inner, r = inner.getBoundingClientRect();
+    var inner = t.inner, r = inner.getBoundingClientRect(), B = wallBigRect();
     t.el.classList.add('has-big');                            // sin zoom de foco: el video puede salir al frente
     inner.style.transition = 'none';
     inner.classList.add('big');
-    wallPlace(inner, r);
+    wallPlace(inner, B);                                      // queda en su tamaño final…
+    inner.style.transform = wallFlip(r, B);                   // …pero se ve todavía en el cuadro
     $('wallShade').classList.remove('hidden');
-    void inner.offsetWidth;                                   // arranca la animación desde el cuadro
+    void inner.offsetWidth;
     inner.style.transition = '';
-    wallPlace(inner, wallBigRect());
+    inner.style.transform = 'none';                           // y vuela al frente (solo GPU)
     $('wallShade').classList.add('show');
-    wallTiles.forEach(function (o) { if (o !== t) o.video.muted = true; });
+    wallTiles.forEach(function (o) { if (o !== t) { o.video.muted = true; wallHold(o, true); } });
     if (!t.live) wallStart(t);
+    wallQuality(t, true);
     wallSetSound(t, true);                                    // solo el agrandado tiene sonido
     wallSchedule();
   }
@@ -1449,22 +1488,28 @@
     wallBig = null;
     var inner = t.inner;
     wallSetSound(t, false);
+    wallQuality(t, false);
     t.el.querySelector('.wt-btn').innerHTML = ICO_PLAY_SOUND;
     $('wallShade').classList.remove('show');
+    if (!IS_PHONE || (focused && focused.classList.contains('wt'))) setFocus(t.el);   // el foco vuelve a su cuadro
+    var finished = false;
     function done() {
+      if (finished) return; finished = true;
       if (wallBig === t) return;
       inner.classList.remove('big', 'drag'); inner.style.cssText = '';
       t.el.classList.remove('has-big');
       if (!wallBig) $('wallShade').classList.add('hidden');
+      wallTiles.forEach(function (o) { if (o !== t && o !== wallBig) wallHold(o, false); });
       wallSchedule();
     }
-    if (!IS_PHONE || (focused && focused.classList.contains('wt'))) setFocus(t.el);   // el foco vuelve a su cuadro
     if (instant) { done(); return; }
+    var B = { left: parseFloat(inner.style.left), top: parseFloat(inner.style.top), width: parseFloat(inner.style.width), height: parseFloat(inner.style.height) };
     inner.classList.remove('drag');
+    inner.style.opacity = '';
     inner.style.transition = '';
-    inner.style.transform = '';
-    wallPlace(inner, t.el.getBoundingClientRect());           // vuelve volando a su lugar
-    setTimeout(done, 300);
+    inner.style.transform = wallFlip(t.el.getBoundingClientRect(), B);   // vuelve volando a su lugar
+    inner.addEventListener('transitionend', function te(e) { if (e.propertyName === 'transform') { inner.removeEventListener('transitionend', te); done(); } });
+    setTimeout(done, 400);                                    // por si no llega transitionend
   }
 
   $('wallToggle').addEventListener('click', function (e) { e.stopPropagation(); setFocus($('wallToggle')); wallToggle(); });
@@ -1522,13 +1567,19 @@
     wallY0 = e.touches[0].clientY; wallDY = 0; wallDrag = true;
     wallBig.inner.classList.add('drag');
   }
+  var wallRaf = 0;
   function wallTouchMove(e) {
     if (!wallDrag || !wallBig) return;
     wallDY = e.touches[0].clientY - wallY0;
-    var dy = wallDY < 0 ? wallDY : wallDY * 0.25;            // hacia abajo apenas se mueve
-    wallBig.inner.style.transform = 'translateY(' + dy + 'px)';
-    wallBig.inner.style.opacity = String(Math.max(0.35, 1 + Math.min(0, wallDY) / 400));
     if (e.cancelable) e.preventDefault();
+    if (wallRaf) return;
+    wallRaf = requestAnimationFrame(function () {             // un cambio por cuadro de pantalla
+      wallRaf = 0;
+      if (!wallBig || !wallDrag) return;
+      var dy = wallDY < 0 ? wallDY : wallDY * 0.25;          // hacia abajo apenas se mueve
+      wallBig.inner.style.transform = 'translate3d(0,' + dy + 'px,0)';
+      wallBig.inner.style.opacity = String(Math.max(0.35, 1 + Math.min(0, wallDY) / 400));
+    });
   }
   function wallTouchEnd() {
     if (!wallDrag) return;
@@ -1540,7 +1591,7 @@
     setTimeout(function () { wallSwiped = false; }, 350);
     if (wallDY < -60) { wallCollapse(); return; }
     inner.classList.remove('drag');
-    inner.style.transform = '';
+    inner.style.transform = 'none';
   }
   [$('favWall'), $('wallShade')].forEach(function (el) {
     el.addEventListener('touchstart', wallTouchStart, { passive: true });
@@ -1548,7 +1599,12 @@
     el.addEventListener('touchend', wallTouchEnd, { passive: true });
     el.addEventListener('touchcancel', wallTouchEnd, { passive: true });
   });
-  window.addEventListener('resize', function () { if (wallBig) { wallBig.inner.style.transition = 'none'; wallPlace(wallBig.inner, wallBigRect()); } });
+  window.addEventListener('resize', function () {
+    if (!wallBig) return;
+    var inner = wallBig.inner;
+    inner.style.transition = 'none'; wallPlace(inner, wallBigRect()); inner.style.transform = 'none';
+    void inner.offsetWidth; inner.style.transition = '';
+  });
   document.addEventListener('visibilitychange', wallSync);
 
   // ---------- Inicio ----------

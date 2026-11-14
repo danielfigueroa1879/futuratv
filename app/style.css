@@ -41,7 +41,7 @@ html, body {
 }
 .tile .glyph { font-size: 64px; line-height: 1; }
 
-.channels { grid-template-columns: repeat(6, 1fr); gap: 28px; max-height: 660px; }
+.channels { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 28px; max-height: 660px; }   /* columnas iguales aunque el nombre sea largo */
 .ch {
   height: 170px; border-radius: 18px; border: 0; background: #18203a;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
@@ -55,6 +55,7 @@ html, body {
   display: flex; align-items: center; justify-content: center; font-size: 34px; font-weight: 800;
 }
 .ch .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.ch { min-width: 0; }
 
 .focused {
   outline: 6px solid #fff !important; outline-offset: 4px;
@@ -562,6 +563,7 @@ html:not(.phone) .player.pip.pos-tl, html:not(.phone) .player.pip.pos-tr { top: 
 .wall-toggle.on .sw i { transform: translateX(12px); }
 
 .phone .wall { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; }
+.wt { min-width: 0; }
 .wt { position: relative; padding-top: 56.25%; border-radius: 12px; background: #111830; }
 .wt-in {
   position: absolute; inset: 0; border-radius: 12px; overflow: hidden; background: #111830;
@@ -580,7 +582,7 @@ html:not(.phone) .player.pip.pos-tl, html:not(.phone) .player.pip.pos-tr { top: 
 /* botón pequeño, transparente pero activo: reproducir con sonido */
 .wt-btn {
   position: absolute; right: 5px; bottom: 5px; width: 30px; height: 30px; padding: 6px; border: 0; border-radius: 50%;
-  background: rgba(0,0,0,.35); color: #fff; -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+  background: rgba(0,0,0,.4); color: #fff;
   box-shadow: 0 0 0 1px rgba(255,255,255,.25); -webkit-tap-highlight-color: transparent;
 }
 .wt-btn svg { width: 100%; height: 100%; display: block; }
@@ -600,7 +602,8 @@ html:not(.phone) .player.pip.pos-tl, html:not(.phone) .player.pip.pos-tr { top: 
 .wt-in.big {
   position: fixed; inset: auto; z-index: 61; border-radius: 14px;
   box-shadow: 0 20px 60px rgba(0,0,0,.8), 0 0 0 2px rgba(139,92,246,.8);
-  transition: left .28s cubic-bezier(.2,.8,.2,1), top .28s cubic-bezier(.2,.8,.2,1), width .28s cubic-bezier(.2,.8,.2,1), height .28s cubic-bezier(.2,.8,.2,1), transform .2s, opacity .2s;
+  transform-origin: 0 0; will-change: transform;
+  transition: transform .26s cubic-bezier(.2,.8,.2,1), opacity .2s;   /* solo transform: animación fluida */
   touch-action: none;
 }
 .wt-in.big.drag { transition: none; }
@@ -634,7 +637,7 @@ html:not(.phone) .wall-toggle .sw i { width: 24px; height: 24px; left: 3px; top:
 html:not(.phone) .wall-toggle.on .sw i { transform: translateX(22px); }
 html:not(.phone) .wall-toggle.focused { background: #fff; color: #0b0f1a; transform: scale(1.05); outline: 0 !important; }
 
-html:not(.phone) .wall { grid-template-columns: repeat(5, 1fr); gap: 24px; max-height: 660px; padding: 14px; }
+html:not(.phone) .wall { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 24px; max-height: 660px; padding: 14px; }
 html:not(.phone) .wt, html:not(.phone) .wt-in { border-radius: 18px; }
 html:not(.phone) .wt { transition: transform .12s ease-out; }
 html:not(.phone) .wt.focused { transform: scale(1.06); outline: 0 !important; z-index: 1; }
