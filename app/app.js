@@ -174,6 +174,7 @@
     if (!el) return;
     if (focused) focused.classList.remove('focused');
     focused = el; el.classList.add('focused');
+    if (el.classList.contains('wt')) wallFocusMoved();
     if (el.tagName === 'INPUT') el.focus(); else if (document.activeElement && document.activeElement.tagName === 'INPUT') document.activeElement.blur();
     if (el.classList.contains('ch')) scrollGridTo(el);
     else if (el.scrollIntoView && !el.classList.contains('key')) el.scrollIntoView({ block: 'nearest' });
@@ -1288,6 +1289,10 @@
   // frente con sonido; deslizándolo hacia arriba vuelve a su lugar. Se activa con el botón «Favoritos en vivo».
   // Videos a la vez (los que están en pantalla). Si un equipo no aguanta tantos, los que fallan muestran «Sin señal».
   var WALL_MAX = 10;
+  // TV: el televisor decodifica pocos videos a la vez. Se reproducen en vivo los más cercanos al cursor
+  // (y el que suena); el límite se ajusta solo: baja si se pegan y prueba subir tras un rato estable.
+  var wallCap = IS_PHONE ? WALL_MAX : Math.max(3, Math.min(WALL_MAX, +(store('wallCapTv') || 6) || 6));
+  var wallCapChanged = Date.now(), wallFocusTimer = null;
   var WALL_STALL = IS_PHONE ? 4 : 7;       // vueltas de 1,5 s sin avanzar antes de reconectar (TV: ~10 s)
   var WALL_HINT = IS_PHONE ? 'Desliza ↑ para volver' : '◀ ▶ cambiar · OK pantalla completa · ATRÁS volver';
   var WALL_HLS = {
@@ -1380,15 +1385,36 @@
   function wallSchedule() {
     if (!wallShown || wallFullOpen) return;
     if (wallBig) { if (!wallBig.live) wallStart(wallBig); return; }   // con uno agrandado no se tocan los demás
-    var n = 0;
+    var cand = wallTiles.filter(function (t) { return t.visible && !t.failed; });
+    if (!IS_PHONE) {                               // prioridad: el que suena, el del cursor y sus vecinos
+      var f = focused && focused.classList.contains('wt') ? +focused.getAttribute('data-w') : 0, C = 5;
+      var score = function (t) {
+        if (t === wallSoundTile) return -2;
+        return Math.abs(Math.floor(t.i / C) - Math.floor(f / C)) * 1.5 + Math.abs(t.i % C - f % C);
+      };
+      cand.sort(function (a, b) { return score(a) - score(b) || a.i - b.i; });
+    }
+    var want = cand.slice(0, wallCap);
     wallQueue = [];
     wallTiles.forEach(function (t) {
-      var want = t.visible && !t.failed && n < WALL_MAX;
-      if (want) n++;
-      if (want && !t.live) wallQueue.push(t);
-      else if (!want && t.live) wallStop(t);
+      var w = want.indexOf(t) >= 0;
+      if (!w && t.live) wallStop(t);
+      t.el.classList.toggle('idle', !w && !t.failed);
     });
+    want.forEach(function (t) { if (!t.live) wallQueue.push(t); });
     wallKick();
+  }
+  // TV: al mover el cursor, los videos en vivo se reacomodan (cuando el cursor se queda quieto)
+  function wallFocusMoved() {
+    if (IS_PHONE || !wallShown || wallCap >= wallTiles.length) return;
+    clearTimeout(wallFocusTimer);
+    wallFocusTimer = setTimeout(wallSchedule, 700);
+  }
+  function wallSetCap(n, why) {
+    n = Math.max(3, Math.min(WALL_MAX, n));
+    if (n === wallCap) return;
+    wallCap = n; wallCapChanged = Date.now(); store('wallCapTv', String(n));
+    wallSchedule();
   }
   // Arranca los videos de a uno (escalonado): evita el tirón de abrir 10 a la vez
   function wallKick() {
@@ -1398,7 +1424,7 @@
     wallQueueTimer = setTimeout(function () { wallQueueTimer = null; wallKick(); }, IS_PHONE ? 200 : 600);
   }
   function wallStart(t) {
-    t.live = true; t.failed = false;
+    t.live = true; t.failed = false; t.stall = 0; t.qd = 0; t.qt = 0; t.lastCt = -1;
     t.el.classList.remove('err', 'ready'); t.el.classList.add('loading');
     var v = t.video;
     v.muted = t !== wallBig;
@@ -1542,6 +1568,7 @@
     if (!t.live) wallStart(t);
     if (dbl) { wallFull(t); return; }
     wallSound(wallSoundTile === t ? null : t);
+    wallSchedule();
   }
   function wallSound(t) {                     // deja con sonido solo a t (o a ninguno)
     wallTiles.forEach(function (o) {
@@ -1656,18 +1683,28 @@
   // y si un cuadro no avanza durante ~5 s, se vuelve a conectar solo ese cuadro
   setInterval(function () {
     if (!wallShown || wallFullOpen || wallBig || document.hidden) return;
-    var reconnected = false;
+    var reconnected = false, stuck = 0, dropped = 0, total = 0;
     wallTiles.forEach(function (t) {
       if (!t.live) { t.stall = 0; return; }
       var v = t.video, ct = v.currentTime;
       if (v.paused || ct === t.lastCt) t.stall = (t.stall || 0) + 1; else t.stall = 0;
+      if (t.stall >= 2 && t.el.classList.contains('ready')) stuck++;      // ya andaba y se pegó
       t.lastCt = ct;
+      if (v.getVideoPlaybackQuality) {
+        var q = v.getVideoPlaybackQuality();
+        dropped += q.droppedVideoFrames - (t.qd || 0); total += q.totalVideoFrames - (t.qt || 0);
+        t.qd = q.droppedVideoFrames; t.qt = q.totalVideoFrames;
+      }
       if (t.stall >= WALL_STALL && !reconnected) {   // de a uno por vuelta, para no recargar el equipo
         reconnected = true; t.stall = 0;
         var snd = t === wallSoundTile; wallStop(t); wallStart(t); if (snd) t.video.muted = false; return;
       }
       if (v.paused) { var p = v.play(); if (p && p.catch) p.catch(function () { }); }
     });
+    if (IS_PHONE) return;
+    var since = Date.now() - wallCapChanged, bad = stuck >= 2 || (total > 60 && dropped / total > 0.2);
+    if (bad && since > 8000 && wallCap > 3) wallSetCap(wallCap - 1);                 // se pegan: uno menos
+    else if (!bad && since > 5 * 60000 && wallCap < WALL_MAX) wallSetCap(wallCap + 1); // estable 5 min: prueba uno más
   }, 1500);
 
   // ---------- Inicio ----------

@@ -662,3 +662,8 @@ html:not(.phone) .wt { transition: none; }
 html:not(.phone) .wt.focused { transform: none; }
 html:not(.phone) .wt-in { transform: none; }
 html:not(.phone) .wt-in video { transition: none; }
+/* TV: cuadros en espera (el televisor no alcanza a reproducir todos a la vez) */
+html:not(.phone) .wt.idle .wt-logo::after {
+  content: 'Ponle el cursor para verlo en vivo'; position: absolute; left: 0; right: 0; top: 12px;
+  text-align: center; font-size: 16px; color: rgba(255,255,255,.55);
+}
