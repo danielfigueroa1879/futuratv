@@ -539,3 +539,10 @@ html:not(.phone) .player.pip.pos-tl, html:not(.phone) .player.pip.pos-tr { top: 
 .phone .group-bar { overflow-x: auto; }
 .channels > p.status { grid-column: 1 / -1; }
 @media (min-width: 600px) and (min-height: 521px) { .phone .sbox { max-width: 720px; } }
+
+/* ---- PiP del sistema Android: la ventanita flotante muestra solo el video ---- */
+.syspip .player, .syspip .player.pip {
+  inset: 0 !important; width: 100% !important; height: 100% !important; max-width: none !important; max-height: none !important;
+  border-radius: 0 !important; box-shadow: none !important; transform: none !important;
+}
+.syspip .player > :not(video) { display: none !important; }

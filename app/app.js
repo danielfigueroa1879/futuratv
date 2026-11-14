@@ -19,8 +19,11 @@
     return touch && Math.min(screen.width, screen.height) < 1100;   // celulares y tablets
   })();
   if (/[?&]modo=celular/.test(location.search)) IS_PHONE = true;   // para probar en un PC
+  var HOME_VIEW = IS_PHONE ? 'live' : 'apps';   // en el celular se parte en «Canales en vivo»
   if (IS_PHONE) {
     document.documentElement.classList.add('phone');
+    var tLive = document.querySelector('.tab[data-view="live"]');
+    if (tLive) tLive.parentNode.insertBefore(tLive, tLive.parentNode.firstChild);
     var vp = document.querySelector('meta[name="viewport"]');
     if (vp) vp.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover');
   }
@@ -748,6 +751,7 @@
 
   function setMode(m) {
     mode = m;
+    if (IS_ANDROID && window.Android.setPlaying) { try { window.Android.setPlaying(m !== 'none'); } catch (e) { } }
     var p = $('player');
     p.classList.toggle('hidden', m === 'none');
     p.classList.toggle('pip', m === 'pip');
@@ -997,13 +1001,18 @@
     }
     var tab = document.querySelector('.tab[data-view="' + currentView + '"]');
     if (focused !== tab) { setFocus(tab); return true; }
-    if (currentView !== 'apps') { showView('apps'); setFocus(document.querySelector('.tab[data-view="apps"]')); return true; }
+    if (currentView !== HOME_VIEW) { showView(HOME_VIEW); setFocus(document.querySelector('.tab[data-view="' + HOME_VIEW + '"]')); return true; }
     if (IS_ANDROID) return false;
     // En la pantalla principal: dejar que webOS cierre la app
     if (window.webOS && window.webOS.platformBack) window.webOS.platformBack();
     else window.close();
     return false;
   }
+  // Android avisa cuando el video pasa a (o sale de) la ventanita flotante del sistema
+  window.mitvSystemPip = function (on) {
+    document.documentElement.classList.toggle('syspip', !!on);
+    if (!on && mode === 'full') showTools();
+  };
   window.mitvBack = goBack;                                         // usado por Android (tecla ATRÁS)
   window.mitvPause = function () { if (mode !== 'none' && !listening) stopPlayer(); }; // al salir a otra app
 
@@ -1272,8 +1281,8 @@
   setTimeout(hideSplash, 4000);
 
   renderApps();
-  showView('apps');
-  setTimeout(loadChannels, 300);   // precarga la lista para que "Canales en vivo" abra al instante
-  setFocus(document.querySelector('[data-app="0"]'));
+  showView(HOME_VIEW);
+  setTimeout(function () { if (!channels.length && !loadingChannels) loadChannels(); }, 300);   // precarga la lista para que "Canales en vivo" abra al instante
+  setFocus(IS_PHONE ? document.querySelector('.tab[data-view="live"]') : document.querySelector('[data-app="0"]'));
   tick(); setInterval(tick, 15000);
 })();

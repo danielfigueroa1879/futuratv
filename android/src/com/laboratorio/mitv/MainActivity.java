@@ -1,13 +1,17 @@
 package com.laboratorio.mitv;
 
 import android.app.Activity;
+import android.app.PictureInPictureParams;
+import android.app.UiModeManager;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.util.Rational;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.WindowManager;
@@ -38,6 +42,46 @@ public class MainActivity extends Activity {
     private WebView web;
     private long lastUpdateCheck = 0;
     private static final long UPDATE_EVERY_MS = 6L * 3600 * 1000;
+    private volatile boolean videoPlaying = false;   // lo avisa la app web (Android.setPlaying)
+
+    /** TV (Android TV / Google TV / Fire TV) o celular/tablet. */
+    private boolean isTv() {
+        UiModeManager um = (UiModeManager) getSystemService(UI_MODE_SERVICE);
+        if (um != null && um.getCurrentModeType() == Configuration.UI_MODE_TYPE_TELEVISION) return true;
+        PackageManager pm = getPackageManager();
+        return pm.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
+                || pm.hasSystemFeature("amazon.hardware.fire_tv")
+                || !pm.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN);
+    }
+
+    // ---------- PiP del sistema (celular): el video sigue en una ventanita al salir de la app ----------
+    private boolean inSystemPip() {
+        return Build.VERSION.SDK_INT >= 24 && isInPictureInPictureMode();
+    }
+
+    private boolean enterSystemPip() {
+        if (Build.VERSION.SDK_INT < 26 || !videoPlaying || isTv()) return false;
+        if (!getPackageManager().hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) return false;
+        try {
+            return enterPictureInPictureMode(new PictureInPictureParams.Builder()
+                    .setAspectRatio(new Rational(16, 9)).build());
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    @Override
+    protected void onUserLeaveHint() {           // botón Inicio / cambiar de app
+        super.onUserLeaveHint();
+        enterSystemPip();
+    }
+
+    @Override
+    public void onPictureInPictureModeChanged(boolean inPip, Configuration newConfig) {
+        super.onPictureInPictureModeChanged(inPip, newConfig);
+        web.evaluateJavascript("window.mitvSystemPip && window.mitvSystemPip(" + inPip + ")", null);
+        if (!inPip) hideSystemUi();
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -270,9 +314,18 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onPause() {
+        if (inSystemPip()) { super.onPause(); return; }   // en la ventanita el video sigue
         web.evaluateJavascript("window.mitvPause && window.mitvPause()", null);
         web.onPause();
         super.onPause();
+    }
+
+    @Override
+    protected void onStop() {
+        // Al cerrar la ventanita PiP (X o deslizar) la app queda detenida: se apaga el video
+        web.evaluateJavascript("window.mitvPause && window.mitvPause()", null);
+        web.onPause();
+        super.onStop();
     }
 
     @Override
@@ -319,6 +372,12 @@ public class MainActivity extends Activity {
         public void reload() {
             runOnUiThread(() -> web.loadUrl(startUrl()));
         }
+
+        @JavascriptInterface
+        public boolean isTV() { return isTv(); }
+
+        @JavascriptInterface
+        public void setPlaying(boolean playing) { videoPlaying = playing; }
 
         @JavascriptInterface
         public void exit() {
