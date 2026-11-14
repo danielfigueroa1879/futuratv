@@ -19,11 +19,9 @@
     return touch && Math.min(screen.width, screen.height) < 1100;   // celulares y tablets
   })();
   if (/[?&]modo=celular/.test(location.search)) IS_PHONE = true;   // para probar en un PC
-  var HOME_VIEW = IS_PHONE ? 'live' : 'apps';   // en el celular se parte en «Canales en vivo»
+  var HOME_VIEW = 'live';   // la app parte en «Canales en vivo» (TV y celular)
   if (IS_PHONE) {
     document.documentElement.classList.add('phone');
-    var tLive = document.querySelector('.tab[data-view="live"]');
-    if (tLive) tLive.parentNode.insertBefore(tLive, tLive.parentNode.firstChild);
     var vp = document.querySelector('meta[name="viewport"]');
     if (vp) vp.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover');
   }
@@ -1283,6 +1281,6 @@
   renderApps();
   showView(HOME_VIEW);
   setTimeout(function () { if (!channels.length && !loadingChannels) loadChannels(); }, 300);   // precarga la lista para que "Canales en vivo" abra al instante
-  setFocus(IS_PHONE ? document.querySelector('.tab[data-view="live"]') : document.querySelector('[data-app="0"]'));
+  setFocus(document.querySelector('.tab[data-view="live"]'));
   tick(); setInterval(tick, 15000);
 })();
