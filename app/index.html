@@ -56,6 +56,8 @@
     </div>
     <p class="hint" id="appVersion"></p>
     <div class="row"><button class="btn ghost focusable" id="checkUpdate">⟳ Buscar actualización ahora</button></div>
+    <h2 class="sub tv-only">Lista de canales en pantalla completa</h2>
+    <div class="row tv-only"><button class="btn ghost focusable" id="listMode"></button></div>
     <h2 class="sub">Favoritos y canales ocultos</h2>
     <p class="hint" id="favInfo"></p>
     <div class="row">
@@ -89,9 +91,23 @@
       <div class="side-head" id="sideHead"></div>
       <div class="side-count" id="sideCount"></div>
       <div class="side-list" id="sideList"></div>
-      <div class="side-prev" id="sidePrev"><video muted playsinline disablepictureinpicture></video></div>
       <div class="side-foot">▲▼ elegir · OK ver · ◀▶ categoría · mantén OK: opciones · ATRÁS cerrar</div>
     </aside>
+    <!-- TV: lista horizontal (carrusel) + controles de tiempo -->
+    <div class="hbar hidden" id="hbar">
+      <div class="hb-head"><span class="arrow">▲</span><span id="hbGroup"></span><span class="hb-count" id="hbCount"></span></div>
+      <div class="hb-track" id="hbTrack"></div>
+      <div class="hb-ctrl" id="hbCtrl">
+        <button class="hc" data-hc="back">⏪ 30 s</button>
+        <button class="hc" data-hc="play" id="hcPlay">⏸</button>
+        <button class="hc" data-hc="fwd">30 s ⏩</button>
+        <div class="hb-time"><div class="hb-bar"><i id="hbFill"></i><b id="hbDot"></b></div><span id="hbWin"></span></div>
+        <span class="hb-delay" id="hbDelay">EN VIVO</span>
+        <button class="hc live" data-hc="live">● EN VIVO</button>
+      </div>
+      <div class="hb-foot">◀▶ canal · OK ver · ▲ categoría · ▼ controles de tiempo · ATRÁS cerrar</div>
+    </div>
+    <div class="side-prev" id="sidePrev"><video muted playsinline disablepictureinpicture></video></div>
     <div class="ptools hidden" id="ptools">
       <button data-pt="close" aria-label="Cerrar"><svg class="ico" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
       <button data-pt="prev" aria-label="Canal anterior"><svg class="ico" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>

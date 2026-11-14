@@ -271,6 +271,11 @@ public class MainActivity extends Activity {
             case KeyEvent.KEYCODE_PROG_YELLOW: return 405;
             case KeyEvent.KEYCODE_PROG_BLUE:
             case KeyEvent.KEYCODE_WINDOW:      return 406;   // PiP
+            case KeyEvent.KEYCODE_MEDIA_REWIND:       return 412;   // retroceder 30 s
+            case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD: return 417;   // adelantar 30 s
+            case KeyEvent.KEYCODE_MEDIA_PLAY:         return 415;
+            case KeyEvent.KEYCODE_MEDIA_PAUSE:        return 19;
+            case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:   return 10252;
             case KeyEvent.KEYCODE_MENU:
             case KeyEvent.KEYCODE_INFO:
             case KeyEvent.KEYCODE_BUTTON_Y:    return 1001;  // opciones del canal

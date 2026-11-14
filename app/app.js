@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '1.9.2';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '1.9.3';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -730,13 +730,17 @@
   var HLS_CONFIG = {
     enableWorker: true, lowLatencyMode: false, startLevel: -1,
     capLevelToPlayerSize: true,          // en PiP usa una calidad menor
-    maxBufferLength: 20, maxMaxBufferLength: 40, backBufferLength: 10,
+    maxBufferLength: 20, maxMaxBufferLength: 40,
+    // TV: guarda hasta 10 min de lo ya visto para poder retroceder aunque el canal guarde menos
+    // (si la memoria no alcanza, el navegador descarta lo más antiguo solo)
+    backBufferLength: IS_PHONE ? 90 : 600,
     manifestLoadingTimeOut: 10000, levelLoadingTimeOut: 10000, fragLoadingTimeOut: 15000
   };
   function startStream(ch) {
     var video = $('video');
     if (window.Hls && window.Hls.isSupported()) {
       hls = new window.Hls(HLS_CONFIG);
+      allowTimeshift(hls);
       hls.loadSource(ch.url);
       hls.attachMedia(video);
       hls.on(window.Hls.Events.ERROR, function (_, d) {
@@ -816,18 +820,21 @@
     if (zapGroup.indexOf(INTL_PREFIX) === 0) g.push(zapGroup);
     return g;
   }
+  // TV: la lista puede ser vertical (lateral) u horizontal (carrusel abajo, con controles de tiempo)
+  var LIST_H = !IS_PHONE && store('listMode') === 'h', hbFocus = -1;   // -1 = tarjetas · 0..n = botón de tiempo
   function openSide() {
-    sideOpen = true;
+    sideOpen = true; hbFocus = -1;
     sideGroup = sideGroups().indexOf(zapGroup) >= 0 ? zapGroup : 'Todos';
     renderSide(true);
-    $('side').classList.remove('hidden');
+    $(LIST_H ? 'hbar' : 'side').classList.remove('hidden');
+    if (LIST_H) { hbMarkCtrl(); hbTimeTick(); }
     $('osd').classList.add('fade');
     bumpSide();
   }
   function closeSide() {
     sideOpen = false; clearTimeout(sideTimer);
     sidePrevStop();
-    $('side').classList.add('hidden');
+    $('side').classList.add('hidden'); $('hbar').classList.add('hidden');
   }
   function bumpSide() {
     clearTimeout(sideTimer);
@@ -841,11 +848,13 @@
     }
     sideIdx = Math.max(0, Math.min(sideIdx, sideList.length - 1));
     $('sideHead').innerHTML = '<span class="arrow">◀</span>' + escapeHtml(groupLabel(sideGroup)) + '<span class="arrow">▶</span>';
+    $('hbGroup').textContent = groupLabel(sideGroup);
     updateSideMarks();
   }
   // Solo se dibujan las filas visibles: moverse por la lista es instantáneo aunque tenga 500 canales
   var SIDE_ROWS = IS_PHONE ? Math.max(12, Math.ceil(Math.max(window.innerHeight, window.innerWidth) / 54) + 2) : 10;
   function updateSideMarks() {
+    if (LIST_H) { hbRender(); sidePrevSchedule(); return; }
     var n = sideList.length;
     var start = Math.max(0, Math.min(sideIdx - Math.floor(SIDE_ROWS / 2), n - SIDE_ROWS));
     var html = '';
@@ -859,6 +868,121 @@
     sidePrevSchedule();
   }
 
+  // ---------- TV: carrusel horizontal ----------
+  function hbRender() {
+    var n = sideList.length, html = '';
+    for (var k = -3; k <= 3; k++) {              // 7 tarjetas: la elegida al centro y vecinas a los lados
+      var i = sideIdx + k, c = sideList[i];
+      if (!c) { html += '<div class="hcard empty"></div>'; continue; }
+      var now = nowCh && c === nowCh;
+      html += '<div class="hcard' + (k === 0 ? ' sel' : '') + (now ? ' now' : '') + '" data-s="' + i + '">' +
+        '<div class="hthumb">' + logoHtml(c, true) + (now ? '<span class="hnow">● VIENDO</span>' : '') + '</div>' +
+        '<div class="hlab"><b>' + ('00' + (i + 1)).slice(-3) + ' - ' + escapeHtml(c.name) + '</b>' +
+        '<small>' + escapeHtml(c.group || groupLabel(sideGroup)) + (isFav(c) ? ' · ★' : '') + '</small></div></div>';
+    }
+    $('hbTrack').innerHTML = n ? html : '<div class="hcard empty"><div class="hlab"><b>Sin canales</b></div></div>';
+    $('hbCount').textContent = n ? (sideIdx + 1) + ' / ' + n : '';
+    $('hbar').classList.toggle('in-ctrl', hbFocus >= 0);
+  }
+  var HB_CTRL = ['back', 'play', 'fwd', 'live'];
+  function hbMarkCtrl() {
+    Array.prototype.forEach.call(document.querySelectorAll('#hbCtrl .hc'), function (b) {
+      b.classList.toggle('focused', hbFocus >= 0 && b.getAttribute('data-hc') === HB_CTRL[hbFocus]);
+    });
+    $('hbar').classList.toggle('in-ctrl', hbFocus >= 0);
+  }
+  function hbKey(k) {                            // teclas con la lista horizontal abierta; true = usada
+    if (hbFocus < 0) {
+      if (k === KEY.LEFT) sideMove(-1);
+      else if (k === KEY.RIGHT) sideMove(1);
+      else if (k === KEY.UP) sideGroupMove(1);
+      else if (k === KEY.DOWN) { hbFocus = 0; hbMarkCtrl(); sidePrevStop(); }
+      else return false;
+      return true;
+    }
+    if (k === KEY.LEFT) hbFocus = Math.max(0, hbFocus - 1);
+    else if (k === KEY.RIGHT) hbFocus = Math.min(HB_CTRL.length - 1, hbFocus + 1);
+    else if (k === KEY.UP) { hbFocus = -1; sidePrevSchedule(); }
+    else if (k === KEY.DOWN) { }
+    else return false;
+    hbMarkCtrl();
+    return true;
+  }
+  function hbAction(a) {
+    if (a === 'back') seekBy(-30);
+    else if (a === 'fwd') seekBy(30);
+    else if (a === 'play') togglePause();
+    else if (a === 'live') goLive();
+    hbTimeTick();
+  }
+
+  // ---------- Retroceder / adelantar / volver al directo ----------
+  // Se puede retroceder lo que el canal guarda en su servidor y además lo ya visto (hasta 10 min en TV).
+  // hls.js devuelve al directo si el video queda fuera de la ventana del servidor mientras carga:
+  // aquí eso se evita (solo si hay video guardado en ese punto), para que retroceder funcione.
+  function allowTimeshift(h) {
+    try {
+      var sc = h.streamController, orig = sc && sc.synchronizeToLiveEdge;
+      if (typeof orig !== 'function') return;
+      sc.synchronizeToLiveEdge = function (details) {
+        var v = $('video'), b = v.buffered, t = v.currentTime;
+        for (var i = 0; i < b.length; i++) if (t >= b.start(i) - 0.5 && t <= b.end(i)) return;   // está en lo guardado: no saltar
+        return orig.apply(this, arguments);
+      };
+    } catch (e) { }
+  }
+  function liveRange() {
+    var v = $('video'), s = v.seekable;
+    if (!s || !s.length) return null;
+    var end = s.end(s.length - 1), start = s.start(0);
+    // el inicio real: lo más antiguo entre lo guardado en la TV y la ventana del servidor
+    try {
+      var b = v.buffered, win = null;
+      if (hls && hls.levels && hls.levels[hls.currentLevel] && hls.levels[hls.currentLevel].details)
+        win = hls.levels[hls.currentLevel].details.fragments[0].start;
+      if (b.length) start = Math.max(start, win !== null ? Math.min(win, b.start(0)) : b.start(0));
+    } catch (e) { }
+    if (hls && hls.liveSyncPosition) end = Math.max(start, Math.min(end, hls.liveSyncPosition));
+    return { start: start, end: end };
+  }
+  function fmtT(s) { s = Math.max(0, Math.round(s)); var m = Math.floor(s / 60), r = s % 60; return (m >= 60 ? Math.floor(m / 60) + ':' + ('0' + m % 60).slice(-2) : m) + ':' + ('0' + r).slice(-2); }
+  function seekBy(sec) {
+    var v = $('video'), r = liveRange();
+    if (!r || r.end - r.start < 8) { toast('Este canal no permite retroceder'); return; }
+    var t = Math.max(r.start + 1, Math.min(r.end, v.currentTime + sec));
+    if (sec < 0 && v.currentTime - r.start < 4) { toast('Llegaste al inicio: este canal guarda ' + fmtT(r.end - r.start) + ' hacia atrás'); return; }
+    v.currentTime = t;
+    if (v.paused) { var p = v.play(); if (p && p.catch) p.catch(function () { }); }
+    var d = r.end - t;
+    toast(d < 6 ? 'En vivo' : '−' + fmtT(d) + ' · se puede retroceder hasta ' + fmtT(r.end - r.start));
+  }
+  function goLive() {
+    var v = $('video'), r = liveRange();
+    if (r) v.currentTime = r.end;
+    var p = v.play(); if (p && p.catch) p.catch(function () { });
+    toast('En vivo');
+  }
+  function togglePause() {
+    var v = $('video');
+    if (v.paused) { var p = v.play(); if (p && p.catch) p.catch(function () { }); } else v.pause();
+  }
+  function hbTimeTick() {
+    if (!LIST_H || !sideOpen) return;
+    var v = $('video'), r = liveRange();
+    $('hcPlay').textContent = v.paused ? '▶' : '⏸';
+    if (!r || r.end - r.start < 8) {
+      $('hbFill').style.width = '100%'; $('hbDot').style.left = '100%';
+      $('hbDelay').textContent = 'EN VIVO'; $('hbWin').textContent = 'Este canal no permite retroceder';
+      return;
+    }
+    var f = Math.max(0, Math.min(1, (v.currentTime - r.start) / (r.end - r.start))), d = r.end - v.currentTime;
+    $('hbFill').style.width = (f * 100) + '%'; $('hbDot').style.left = (f * 100) + '%';
+    $('hbDelay').textContent = d < 6 ? 'EN VIVO' : '−' + fmtT(d);
+    $('hbar').classList.toggle('behind', d >= 6);
+    $('hbWin').textContent = 'Puedes retroceder hasta ' + fmtT(r.end - r.start);
+  }
+  setInterval(hbTimeTick, 500);
+
   // ---------- TV: vista previa en vivo (solo imagen) del canal elegido en la lista lateral ----------
   // Un solo video chico y sin sonido; se carga cuando te detienes medio segundo sobre un canal.
   var prevHls = null, prevTimer = null, prevCh = null;
@@ -869,7 +993,7 @@
     clearTimeout(prevTimer); prevCh = null;
     var box = $('sidePrev'); if (!box) return;
     box.classList.remove('show', 'ready', 'fail');
-    $('side').classList.remove('has-prev');
+    $('player').classList.remove('has-prev');
     var v = box.querySelector('video');
     if (prevHls) { try { prevHls.destroy(); } catch (e) { } prevHls = null; }
     v.removeAttribute('src'); try { v.load(); } catch (e) { }
@@ -879,10 +1003,19 @@
     var c = sideList[sideIdx];
     if (c !== prevCh) sidePrevStop();
     if (!sideOpen || mode !== 'full' || !c || c.isCountry || c === nowCh) return;   // el que ya ves no necesita vista previa
-    var row = $('sideList').querySelector('.srow.sel'), box = $('sidePrev');
-    if (!row) return;
-    $('side').classList.add('has-prev');
-    box.style.top = ($('sideList').offsetTop + row.offsetTop + (row.offsetHeight - box.offsetHeight) / 2) + 'px';
+    var box = $('sidePrev'), r, P = $('player').getBoundingClientRect();
+    if (LIST_H) {                                  // horizontal: cubre la imagen de la tarjeta elegida
+      var th = $('hbTrack').querySelector('.hcard.sel .hthumb'); if (!th) return;
+      r = th.getBoundingClientRect();
+      box.style.left = (r.left - P.left) + 'px'; box.style.top = (r.top - P.top) + 'px';
+      box.style.width = r.width + 'px'; box.style.height = r.height + 'px';
+    } else {                                       // vertical: recuadro chico entre el nombre y la estrella
+      var row = $('sideList').querySelector('.srow.sel'); if (!row) return;
+      r = row.getBoundingClientRect(); var S = $('side').getBoundingClientRect();
+      box.style.width = '128px'; box.style.height = '72px';
+      box.style.left = (S.right - P.left - 78 - 128) + 'px'; box.style.top = (r.top - P.top + (r.height - 72) / 2) + 'px';
+    }
+    $('player').classList.add('has-prev');
     if (c === prevCh) return;
     prevTimer = setTimeout(function () { sidePrevLoad(c); }, 500);
   }
@@ -1033,6 +1166,11 @@
       return;
     }
     if (el.id === 'resetM3u') { store('m3u', DEFAULT_M3U); $('m3uInput').value = DEFAULT_M3U; channels = []; toast('Lista restablecida'); return; }
+    if (el.id === 'listMode') {
+      LIST_H = !LIST_H; store('listMode', LIST_H ? 'h' : 'v'); updateListModeBtn();
+      toast(LIST_H ? 'Lista horizontal (carrusel) con controles de tiempo' : 'Lista vertical (lateral)');
+      return;
+    }
     if (el.id === 'checkUpdate') {
       if (IS_ANDROID && typeof window.Android.checkUpdateNow === 'function') { toast('Buscando actualización…'); window.Android.checkUpdateNow(); }
       else if (IS_ANDROID) toast('Para buscar actualizaciones con este botón instala la nueva APK de FuturaTV');
@@ -1043,7 +1181,11 @@
     if (el.id === 'clearFavs') { favs = {}; saveSet('favs', favs); refreshChannels(); updateSettingsInfo(); toast('Favoritos borrados'); return; }
     if (el.tagName === 'INPUT') el.focus();
   }
+  function updateListModeBtn() {
+    $('listMode').textContent = LIST_H ? '▭ Horizontal (carrusel abajo) · cambiar a vertical' : '▯ Vertical (lista al costado) · cambiar a horizontal';
+  }
   function updateSettingsInfo() {
+    updateListModeBtn();
     $('favInfo').textContent = Object.keys(favs).length + ' favoritos · ' + Object.keys(hiddenSet).length + ' canales ocultos';
   }
 
@@ -1084,6 +1226,7 @@
   // OK corto = acción normal · OK mantenido = menú de opciones del canal
   var okTimer = null, okLong = false;
   function okShort() {
+    if (mode === 'full' && sideOpen && LIST_H && hbFocus >= 0) { hbAction(HB_CTRL[hbFocus]); bumpSide(); return; }
     if (mode === 'full' && sideOpen) { playChannel(sideList, sideIdx, sideGroup, 'full'); bumpSide(); return; }
     if (mode === 'full') { openSide(); return; }
     activate(focused);
@@ -1132,6 +1275,14 @@
     }
 
     if (mode === 'full') {
+      if (k === 412 || k === 417 || k === 415 || k === 19 || k === 10252) {     // teclas de reproducción del control
+        if (k === 412) seekBy(-30); else if (k === 417) seekBy(30);
+        else if (k === 415) { var pv = $('video'); if (pv.paused) togglePause(); } else if (k === 19) { if (!$('video').paused) togglePause(); }
+        else togglePause();
+        if (sideOpen) bumpSide();
+        e.preventDefault(); return;
+      }
+      if (sideOpen && LIST_H) { bumpSide(); hbKey(k); e.preventDefault(); return; }
       if (sideOpen) {
         bumpSide();
         if (k === KEY.UP) sideMove(-1);
@@ -1180,6 +1331,10 @@
     var pt = e.target.closest && e.target.closest('[data-pt]');
     if (pt) { playerTool(pt.getAttribute('data-pt')); return; }
     if (IS_PHONE && mode === 'full' && !sideOpen && e.target.closest && e.target.closest('#player')) { showTools(); return; }
+    var hc = e.target.closest && e.target.closest('[data-hc]');
+    if (hc) { hbAction(hc.getAttribute('data-hc')); bumpSide(); return; }
+    var card = e.target.closest && e.target.closest('.hcard[data-s]');
+    if (card) { var ci = +card.getAttribute('data-s'); if (ci === sideIdx) okShort(); else { sideIdx = ci; hbFocus = -1; updateSideMarks(); bumpSide(); } return; }
     var row = e.target.closest && e.target.closest('.srow');
     if (row && row.hasAttribute('data-s')) { sideIdx = +row.getAttribute('data-s'); okShort(); return; }
     if (mode === 'full' && !sideOpen && e.target.closest && e.target.closest('#player')) { openSide(); return; }
