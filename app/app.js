@@ -501,11 +501,14 @@
     ['4', '5', '6', '7', '8', '9', '0', '+', 'DEL'],
     ['MIC', 'SPACE', 'CLEAR', 'CLOSE']
   ];
-  var KBD_LABEL = { MIC: '🎤 Buscar por voz', DEL: '⌫ Borrar', SPACE: 'Espacio', CLEAR: 'Borrar todo', CLOSE: '✕ Cerrar búsqueda' };
+  var MIC_SVG = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="2.5" width="6" height="11.5" rx="3"/>' +
+    '<path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7"/></svg>';
+  var KBD_HTML = { MIC: MIC_SVG + '<span>Buscar por voz</span>' };
+  var KBD_LABEL = { MIC: 'Buscar por voz', DEL: '⌫ Borrar', SPACE: 'Espacio', CLEAR: 'Borrar todo', CLOSE: '✕ Cerrar búsqueda' };
   function renderKeyboard() {
     $('kbd').innerHTML = KBD_ROWS.map(function (row) {
       return '<div class="krow">' + row.map(function (k) {
-        return '<button class="key focusable' + (KBD_LABEL[k] ? ' wide' : '') + '" data-k="' + k + '">' + escapeHtml(KBD_LABEL[k] || k) + '</button>';
+        return '<button class="key focusable' + (KBD_LABEL[k] ? ' wide' : '') + '" data-k="' + k + '">' + (KBD_HTML[k] || escapeHtml(KBD_LABEL[k] || k)) + '</button>';
       }).join('') + '</div>';
     }).join('');
   }
@@ -546,29 +549,68 @@
     updateSearch();
   }
   // ---------- Búsqueda por voz ----------
-  // Android: reconocedor de voz de Google del dispositivo. Navegador de PC: Web Speech API.
-  var listening = false;
+  // Android: reconocimiento dentro de la app (texto en vivo mientras hablas).
+  // Navegador de PC: Web Speech API.
+  var listening = false, voiceTimer = null, webRec = null;
+  var VOICE_MSG = {
+    starting: 'Preparando micrófono…', listening: 'Te escucho… di el nombre del canal',
+    speaking: 'Te escucho…', processing: 'Buscando…', permission: 'Acepta el permiso del micrófono en la pantalla',
+    external: 'Habla en la ventana de Google…'
+  };
+  function voiceUI(show) {
+    $('voicePanel').classList.toggle('hidden', !show);
+    $('voiceBtn').classList.toggle('on', show);
+  }
+  function setVoiceText(t, interim) {
+    var el = $('voiceText');
+    el.textContent = t || '';
+    el.classList.toggle('interim', !!interim);
+  }
   function startVoice() {
     if (listening) return;
+    if (!searchOpen) { if (currentView !== 'live') showView('live'); openSearch(); }
+    setVoiceText('');
+    $('voiceMsg').textContent = VOICE_MSG.starting;
     if (IS_ANDROID) {
-      if (typeof window.Android.voiceSearch !== 'function') { toast('Para buscar por voz instala la nueva versión del APK'); return; }
-      if (!window.Android.voiceSearch()) { toast('Este dispositivo no tiene búsqueda por voz (instala "Google" desde la tienda)'); return; }
-      setListening(true);
+      if (typeof window.Android.voiceSearch !== 'function' || typeof window.Android.voiceCancel !== 'function') {
+        toast('Para buscar por voz instala la nueva versión del APK de FuturaTV'); return;
+      }
+      listening = true; voiceUI(true);
+      if (!window.Android.voiceSearch()) {
+        stopVoiceUI();
+        toast('Este dispositivo no tiene reconocimiento de voz. Instala la app "Google" desde la tienda.');
+      }
+      armVoiceTimeout();
       return;
     }
     var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) { toast('Búsqueda por voz no disponible aquí. En el TV LG usa el micrófono del Magic Remote sobre el cuadro de texto.'); return; }
-    var rec = new SR();
-    rec.lang = 'es-CL'; rec.interimResults = false; rec.maxAlternatives = 1;
-    rec.onresult = function (e) { window.mitvVoiceResult(e.results[0][0].transcript); };
-    rec.onerror = function () { setListening(false); toast('No te escuché bien, intenta otra vez'); };
-    rec.onend = function () { setListening(false); };
-    try { rec.start(); setListening(true); } catch (e) { toast('No se pudo usar el micrófono'); }
+    webRec = new SR();
+    webRec.lang = 'es-CL'; webRec.interimResults = true; webRec.maxAlternatives = 1;
+    webRec.onresult = function (e) {
+      var r = e.results[e.results.length - 1];
+      if (r.isFinal) window.mitvVoiceResult(r[0].transcript); else window.mitvVoicePartial(r[0].transcript);
+    };
+    webRec.onerror = function (e) { window.mitvVoiceError(e.error || 'error'); };
+    webRec.onend = function () { if (listening) stopVoiceUI(); };
+    try { webRec.start(); listening = true; voiceUI(true); window.mitvVoiceState('listening'); armVoiceTimeout(); }
+    catch (e) { toast('No se pudo usar el micrófono'); }
   }
-  function setListening(on) {
-    listening = on;
-    $('voiceBtn').classList.toggle('on', on);
-    if (on) toast('🎤 Habla ahora: di el nombre del canal');
+  function armVoiceTimeout() {
+    clearTimeout(voiceTimer);
+    voiceTimer = setTimeout(function () {         // si en 15 s no llega nada, se cierra
+      if (listening) { cancelVoice(); toast('No te escuché. Aprieta 🎤 e intenta otra vez.'); }
+    }, 15000);
+  }
+  function stopVoiceUI() {
+    listening = false; clearTimeout(voiceTimer);
+    voiceUI(false);
+    $('voiceLevel').style.transform = 'scale(1)';
+  }
+  function cancelVoice() {
+    try { if (IS_ANDROID && window.Android.voiceCancel) window.Android.voiceCancel(); } catch (e) { }
+    try { if (webRec) webRec.abort(); } catch (e) { }
+    stopVoiceUI();
   }
   // Limpia frases como "pon el canal 13" -> "canal 13"
   function cleanVoice(t) {
@@ -580,8 +622,24 @@
     } while (t !== prev);
     return t.trim();
   }
+  window.mitvVoiceState = function (state) {
+    if (!listening) { listening = true; voiceUI(true); }
+    if (VOICE_MSG[state]) $('voiceMsg').textContent = VOICE_MSG[state];
+    armVoiceTimeout();
+  };
+  window.mitvVoiceLevel = function (rms) {          // rms aprox. -2..10 dB
+    var lvl = Math.max(0, Math.min(1, (rms + 2) / 12));
+    $('voiceLevel').style.transform = 'scale(' + (1 + lvl * 0.6).toFixed(2) + ')';
+  };
+  window.mitvVoicePartial = function (text) {        // el texto se escribe mientras hablas
+    if (!listening) return;
+    setVoiceText(text, true);
+    var q = cleanVoice(text);
+    if (q && q !== searchQuery) { searchQuery = q; updateSearch(); }
+    armVoiceTimeout();
+  };
   window.mitvVoiceResult = function (text) {
-    setListening(false);
+    stopVoiceUI();
     var q = cleanVoice(text);
     if (!q) { toast('No te escuché bien, intenta otra vez'); return; }
     if (mode === 'full') minimize();
@@ -589,8 +647,19 @@
     if (!searchOpen) openSearch();
     searchQuery = q; updateSearch();
     var first = gridEl(0);
-    if (filtered.length && first) { setFocus(first); toast('🎤 «' + q + '»: ' + filtered.length + ' resultado' + (filtered.length === 1 ? '' : 's') + ' · OK para ver'); }
-    else toast('🎤 «' + q + '»: no encontré canales con ese nombre');
+    if (filtered.length && first) { setFocus(first); toast('«' + q + '»: ' + filtered.length + ' resultado' + (filtered.length === 1 ? '' : 's') + ' · OK para ver'); }
+    else toast('«' + q + '»: no encontré canales con ese nombre');
+  };
+  window.mitvVoiceError = function (code) {
+    stopVoiceUI();
+    var msg = {
+      1: 'Sin conexión a internet para reconocer la voz', 2: 'Sin conexión a internet para reconocer la voz',
+      3: 'No se pudo usar el micrófono', 6: 'No te escuché. Aprieta 🎤 e intenta otra vez.',
+      7: 'No entendí. Intenta decir solo el nombre del canal.', 8: 'El micrófono está ocupado, intenta de nuevo',
+      9: 'FuturaTV necesita permiso para usar el micrófono', permiso: 'Sin permiso de micrófono no se puede buscar por voz',
+      'no-speech': 'No te escuché. Aprieta 🎤 e intenta otra vez.', 'not-allowed': 'Sin permiso de micrófono'
+    }[code] || ('No se pudo reconocer la voz (código ' + code + ')');
+    toast(msg);
   };
   // Botón de micrófono / búsqueda del control remoto
   window.mitvVoiceKey = function () {
@@ -878,6 +947,7 @@
 
   // Devuelve true si manejó ATRÁS; false si ya estamos en el inicio (la app debe cerrarse).
   function goBack() {
+    if (listening) { cancelVoice(); return true; }
     if (document.activeElement && document.activeElement.tagName === 'INPUT') document.activeElement.blur();
     if (menuOpen) { closeMenu(); return true; }
     if (mode === 'full' && sideOpen) { closeSide(); return true; }
@@ -899,7 +969,7 @@
     return false;
   }
   window.mitvBack = goBack;                                         // usado por Android (tecla ATRÁS)
-  window.mitvPause = function () { if (mode !== 'none') stopPlayer(); }; // al salir a otra app
+  window.mitvPause = function () { if (mode !== 'none' && !listening) stopPlayer(); }; // al salir a otra app
 
   // OK corto = acción normal · OK mantenido = menú de opciones del canal
   var okTimer = null, okLong = false;
@@ -911,6 +981,10 @@
 
   document.addEventListener('keydown', function (e) {
     var k = e.keyCode;
+    if (listening) {                       // mientras se escucha: ATRÁS u OK cancelan
+      if (k === KEY.BACK || k === KEY.ESC || k === KEY.BACKSPACE || k === KEY.ENTER) cancelVoice();
+      e.preventDefault(); return;
+    }
     var typing = document.activeElement && document.activeElement.tagName === 'INPUT';
     if (typing && (k === KEY.LEFT || k === KEY.RIGHT || k === KEY.BACKSPACE)) return; // edición de texto
     if (searchOpen && !typing && !menuOpen && mode !== 'full' && e.key && e.key.length === 1 && /[a-z0-9ñ ]/i.test(e.key)) {

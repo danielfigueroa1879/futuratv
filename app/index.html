@@ -28,11 +28,11 @@
   <main class="view hidden" id="view-live">
     <div class="live-head">
       <h2>Canales en vivo</h2>
-      <button class="chip search-btn focusable" id="searchBtn">🔍 Buscar</button>
+      <button class="chip search-btn focusable" id="searchBtn"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg>Buscar</button>
       <div class="group-bar" id="groupBar"></div>
     </div>
     <div class="search hidden" id="searchPanel">
-      <div class="sbox"><span class="lupa">🔍</span><input id="searchInput" class="focusable" type="text" placeholder="Nombre del canal…" spellcheck="false" autocomplete="off"><button class="mic focusable" id="voiceBtn" title="Buscar por voz">🎤</button></div>
+      <div class="sbox"><svg class="ico lupa" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg><input id="searchInput" class="focusable" type="text" placeholder="Nombre del canal…" spellcheck="false" autocomplete="off"><button class="mic focusable" id="voiceBtn" title="Buscar por voz"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="2.5" width="6" height="11.5" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7"/></svg></button></div>
       <div class="kbd" id="kbd"></div>
     </div>
     <p class="status" id="liveStatus">Cargando lista de canales…</p>
@@ -88,6 +88,20 @@
     </aside>
     <div class="spinner" id="spinner"></div>
     <div class="player-error hidden" id="playerError"></div>
+  </div>
+
+  <div class="voice-panel hidden" id="voicePanel">
+    <div class="orb">
+      <div class="ring r1"></div><div class="ring r2"></div><div class="ring r3"></div>
+      <div class="level" id="voiceLevel"></div>
+      <div class="core"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="2.5" width="6" height="11.5" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7"/></svg></div>
+    </div>
+    <div class="voice-info">
+      <div class="voice-msg" id="voiceMsg">Te escucho…</div>
+      <div class="voice-text" id="voiceText"></div>
+      <div class="bars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="voice-hint">ATRÁS para cancelar</div>
+    </div>
   </div>
 
   <div class="menu-bg hidden" id="chMenu">
