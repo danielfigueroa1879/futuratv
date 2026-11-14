@@ -62,7 +62,48 @@ public class MainActivity extends Activity {
 
     // ---------- Búsqueda por voz ----------
     private static final int REQ_MIC = 7;
+    private static final int REQ_VOICE = 8;
     private SpeechRecognizer recognizer;
+    private boolean triedIntentFallback = false;
+    private long lastLevelSent = 0;
+
+    private Intent recognizerIntent() {
+        Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-CL");
+        i.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
+        i.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1);
+        i.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, getPackageName());
+        i.putExtra(RecognizerIntent.EXTRA_PROMPT, "Di el nombre del canal");
+        return i;
+    }
+
+    private boolean canUseVoiceIntent() {
+        return recognizerIntent().resolveActivity(getPackageManager()) != null;
+    }
+
+    /** Plan B: la ventana de voz de Google (cuando el reconocedor interno no está o falla). */
+    private boolean startVoiceIntent() {
+        triedIntentFallback = true;
+        stopVoice();
+        try {
+            startActivityForResult(recognizerIntent(), REQ_VOICE);
+            js("window.mitvVoiceState('external')");
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQ_VOICE) return;
+        ArrayList<String> l = (resultCode == RESULT_OK && data != null)
+                ? data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS) : null;
+        if (l != null && !l.isEmpty()) js("window.mitvVoiceResult(" + jsStr(l.get(0)) + ")");
+        else js("window.mitvVoiceError(6)");
+    }
 
     private void js(String code) {
         runOnUiThread(() -> web.evaluateJavascript(code, null));
@@ -85,10 +126,22 @@ public class MainActivity extends Activity {
             recognizer.setRecognitionListener(new RecognitionListener() {
                 @Override public void onReadyForSpeech(Bundle b) { js("window.mitvVoiceState('listening')"); }
                 @Override public void onBeginningOfSpeech() { js("window.mitvVoiceState('speaking')"); }
-                @Override public void onRmsChanged(float rms) { js("window.mitvVoiceLevel(" + rms + ")"); }
+                @Override public void onRmsChanged(float rms) {
+                    long now = System.currentTimeMillis();
+                    if (now - lastLevelSent < 80) return;          // no saturar la app web
+                    lastLevelSent = now;
+                    js("window.mitvVoiceLevel(" + rms + ")");
+                }
                 @Override public void onBufferReceived(byte[] b) { }
                 @Override public void onEndOfSpeech() { js("window.mitvVoiceState('processing')"); }
-                @Override public void onError(int error) { stopVoice(); js("window.mitvVoiceError(" + error + ")"); }
+                @Override public void onError(int error) {
+                    stopVoice();
+                    boolean fallback = error == SpeechRecognizer.ERROR_AUDIO || error == SpeechRecognizer.ERROR_CLIENT
+                            || error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY || error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS
+                            || error == 10 /* demasiadas solicitudes */ || error == 11 /* servidor desconectado */ || error >= 12;
+                    if (fallback && !triedIntentFallback && canUseVoiceIntent() && startVoiceIntent()) return;
+                    js("window.mitvVoiceError(" + error + ")");
+                }
                 @Override public void onResults(Bundle r) {
                     ArrayList<String> l = r.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
                     stopVoice();
@@ -101,15 +154,10 @@ public class MainActivity extends Activity {
                 }
                 @Override public void onEvent(int type, Bundle b) { }
             });
-            Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
-            i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-            i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-CL");
-            i.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
-            i.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1);
-            i.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, getPackageName());
-            recognizer.startListening(i);
+            recognizer.startListening(recognizerIntent());
         } catch (Exception e) {
             stopVoice();
+            if (!triedIntentFallback && canUseVoiceIntent() && startVoiceIntent()) return;
             js("window.mitvVoiceError(3)");
         }
     }
@@ -468,8 +516,13 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public boolean voiceSearch() {
-            if (!SpeechRecognizer.isRecognitionAvailable(MainActivity.this)) return false;
-            runOnUiThread(MainActivity.this::startVoice);
+            triedIntentFallback = false;
+            if (SpeechRecognizer.isRecognitionAvailable(MainActivity.this)) {
+                runOnUiThread(MainActivity.this::startVoice);
+                return true;
+            }
+            if (!canUseVoiceIntent()) return false;
+            runOnUiThread(MainActivity.this::startVoiceIntent);
             return true;
         }
 
