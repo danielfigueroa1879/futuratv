@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>FuturaTV</title>
+  <meta name="viewport" content="width=1920, height=1080">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="splash" id="splash"><img src="img/splash.jpg" alt="FuturaTV"><div class="splash-bar"><i></i></div></div>
+  <header class="topbar">
+    <div class="brand"><img src="img/logo.jpg" alt=""><span class="b1">FUTURA</span><span class="b2">TV</span></div>
+    <nav class="tabs" id="tabs">
+      <button class="tab focusable" data-view="apps">Apps</button>
+      <button class="tab focusable" data-view="live">Canales en vivo</button>
+      <button class="tab focusable" data-view="settings">Ajustes</button>
+    </nav>
+    <div class="clock" id="clock"></div>
+  </header>
+
+  <!-- APPS -->
+  <main class="view" id="view-apps">
+    <h2>Aplicaciones de streaming</h2>
+    <div class="grid" id="appsGrid"></div>
+  </main>
+
+  <!-- LIVE CHANNELS -->
+  <main class="view hidden" id="view-live">
+    <div class="live-head">
+      <h2>Canales en vivo</h2>
+      <button class="chip search-btn focusable" id="searchBtn">🔍 Buscar</button>
+      <div class="group-bar" id="groupBar"></div>
+    </div>
+    <div class="search hidden" id="searchPanel">
+      <div class="sbox"><span class="lupa">🔍</span><input id="searchInput" class="focusable" type="text" placeholder="Nombre del canal…" spellcheck="false" autocomplete="off"></div>
+      <div class="kbd" id="kbd"></div>
+    </div>
+    <p class="status" id="liveStatus">Cargando lista de canales…</p>
+    <div class="grid channels" id="channelGrid"></div>
+  </main>
+
+  <!-- SETTINGS -->
+  <main class="view hidden" id="view-settings">
+    <h2>Ajustes</h2>
+    <label class="field">
+      <span>Lista extra de canales (M3U) – se suma a los canales chilenos incluidos</span>
+      <input id="m3uInput" class="focusable" type="text" spellcheck="false">
+    </label>
+    <div class="row">
+      <button class="btn focusable" id="saveM3u">Guardar y recargar</button>
+      <button class="btn ghost focusable" id="resetM3u">Restablecer (Chile)</button>
+    </div>
+    <p class="hint" id="appVersion"></p>
+    <h2 class="sub">Favoritos y canales ocultos</h2>
+    <p class="hint" id="favInfo"></p>
+    <div class="row">
+      <button class="btn ghost focusable" id="unhideAll">Mostrar todos los ocultos</button>
+      <button class="btn ghost focusable" id="clearFavs">Borrar favoritos</button>
+    </div>
+    <p class="hint">
+      En un canal, <b>mantén OK</b> (o usa el botón MENU) para marcarlo como favorito ★ u ocultarlo.
+      Botón amarillo = favorito · botón rojo = ocultar · botón azul = PiP.
+    </p>
+    <p class="hint">
+      Puedes usar cualquier lista M3U/M3U8 a la que tengas acceso legal.
+      La app trae incluida una lista de canales y radios chilenos. Además carga esta lista extra (por defecto, canales gratuitos de Chile de iptv-org); los repetidos se omiten.
+      Otros países: <code>https://iptv-org.github.io/iptv/countries/XX.m3u</code>
+      (ar, mx, es, co, pe…).
+    </p>
+  </main>
+
+  <!-- PLAYER -->
+  <div class="player hidden" id="player">
+    <video id="video" autoplay playsinline></video>
+    <div class="osd" id="osd">
+      <img id="osdLogo" alt="">
+      <div>
+        <div class="osd-name" id="osdName"></div>
+        <div class="osd-hint">▲▼ cambiar canal · OK o ◀ lista de canales · ATRÁS minimizar (PiP)<br>Mantén OK o botón MENU: favorito / ocultar · Amarillo ★ · Rojo ocultar</div>
+      </div>
+    </div>
+    <div class="pip-label"><span id="pipName"></span><small>OK en este canal = pantalla completa · ATRÁS = cerrar</small></div>
+    <aside class="side hidden" id="side">
+      <div class="side-head" id="sideHead"></div>
+      <div class="side-count" id="sideCount"></div>
+      <div class="side-list" id="sideList"></div>
+      <div class="side-foot">▲▼ elegir · OK ver · ◀▶ categoría · mantén OK: opciones · ATRÁS cerrar</div>
+    </aside>
+    <div class="spinner" id="spinner"></div>
+    <div class="player-error hidden" id="playerError"></div>
+  </div>
+
+  <div class="menu-bg hidden" id="chMenu">
+    <div class="menu">
+      <div class="menu-title" id="menuTitle"></div>
+      <div class="menu-btns" id="menuBtns"></div>
+    </div>
+  </div>
+
+  <div class="toast hidden" id="toast"></div>
+
+  <script src="lib/hls.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
