@@ -1285,12 +1285,12 @@
   // ---------- Muro de favoritos en vivo (celular) ----------
   // Todos los favoritos se reproducen a la vez, sin sonido y en baja calidad. Al tocar uno se agranda al
   // frente con sonido; deslizándolo hacia arriba vuelve a su lugar. Se activa con el botón «Favoritos en vivo».
-  // Videos a la vez: en TV como máximo 4 (los televisores tienen pocos decodificadores de video)
-  var WALL_MAX = IS_PHONE ? ((navigator.deviceMemory && navigator.deviceMemory >= 6) ? 6 : 4) : 4;
+  // Videos a la vez (los que están en pantalla). Si un equipo no aguanta tantos, los que fallan muestran «Sin señal».
+  var WALL_MAX = 10;
   var WALL_HINT = IS_PHONE ? 'Desliza ↑ para volver' : '◀ ▶ cambiar · OK pantalla completa · ATRÁS volver';
   var WALL_HLS = {
-    enableWorker: true, startLevel: 0, capLevelToPlayerSize: true,      // calidad según el tamaño del cuadro
-    maxBufferLength: 8, maxMaxBufferLength: 12, backBufferLength: 0,
+    enableWorker: IS_PHONE, startLevel: 0, capLevelToPlayerSize: true,  // calidad según el tamaño del cuadro
+    maxBufferLength: 6, maxMaxBufferLength: 10, backBufferLength: 0,    // buffers chicos: 10 videos a la vez
     manifestLoadingTimeOut: 10000, levelLoadingTimeOut: 10000, fragLoadingTimeOut: 15000
   };
   var ICO_PLAY_SOUND = '<svg viewBox="0 0 24 24" aria-hidden="true"><path class="pl" d="M5 5.5v13l9-6.5z"/><path class="sn" d="M16.5 9.2a4 4 0 0 1 0 5.6M19 6.8a7.5 7.5 0 0 1 0 10.4"/></svg>';
