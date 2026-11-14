@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.app.PictureInPictureParams;
 import android.app.UiModeManager;
 import android.content.Intent;
+import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
@@ -86,6 +87,9 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // TV: siempre horizontal · celular/tablet: vertical u horizontal según se gire (respeta el bloqueo de rotación)
+        setRequestedOrientation(isTv() ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                : ActivityInfo.SCREEN_ORIENTATION_FULL_USER);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
         web = new WebView(this);
