@@ -654,3 +654,6 @@ html:not(.phone) .wt-in.big .wt-btn { width: 64px; height: 64px; padding: 14px; 
 html:not(.phone) .wt-in.big .wt-hint { font-size: 22px; top: 18px; padding: 8px 22px; border-radius: 20px; animation-duration: 5s; }
 html:not(.phone) .wt-in.big .wt-full { width: 60px; height: 60px; line-height: 60px; font-size: 30px; right: 20px; top: 18px; }
 .wt.has-big { transform: none !important; z-index: auto !important; transition: none !important; }
+/* TV: el favorito que suena queda marcado */
+html:not(.phone) .wt.sound .wt-in { box-shadow: 0 0 0 4px #8b5cf6; }
+html:not(.phone) .wt.sound.focused .wt-in { box-shadow: 0 0 0 5px #fff, 0 0 0 9px #8b5cf6, 0 18px 50px rgba(0,0,0,.6); }

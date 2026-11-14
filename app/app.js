@@ -1000,6 +1000,7 @@
     if (document.activeElement && document.activeElement.tagName === 'INPUT') document.activeElement.blur();
     if (menuOpen) { closeMenu(); return true; }
     if (mode === 'full' && sideOpen) { closeSide(); return true; }
+    if (mode === 'full' && wallReturn()) return true;   // vino del muro de favoritos: vuelve a él
     if (mode === 'full') { minimize(); return true; }   // pantalla completa -> PiP
     if (mode === 'pip') { stopPlayer(); return true; }  // PiP -> cerrar video
     if (activeGroup.indexOf(INTL_PREFIX) === 0 && currentView === 'live' &&
@@ -1055,7 +1056,7 @@
     if (k === KEY.YELLOW || k === KEY.GREEN) { var cf = contextChannel(); if (cf) toggleFav(cf); e.preventDefault(); return; }
     if (k === KEY.RED) { var ch = contextChannel(); if (ch) { if (isHidden(ch)) unhideChannel(ch); else hideChannel(ch); } e.preventDefault(); return; }
     if (k === KEY.BLUE || (k === KEY.P && !typing)) {
-      if (mode === 'full') minimize(); else if (mode === 'pip') setMode('full');
+      if (mode === 'full') { if (!wallReturn()) minimize(); } else if (mode === 'pip') setMode('full');
       e.preventDefault(); return;
     }
     if (k === KEY.BACK || k === KEY.ESC || (k === KEY.BACKSPACE && !typing)) { goBack(); e.preventDefault(); return; }
@@ -1248,8 +1249,8 @@
     toolsTimer = setTimeout(function () { $('ptools').classList.add('hidden'); }, 4500);
   }
   function playerTool(t) {
-    if (t === 'close') { stopPlayer(); return; }
-    if (t === 'pip') { minimize(); return; }
+    if (t === 'close') { if (!wallReturn()) stopPlayer(); return; }   // si vino del muro, vuelve a él
+    if (t === 'pip') { if (!wallReturn()) minimize(); return; }
     if (t === 'list') { if (mode !== 'full') setMode('full'); $('ptools').classList.add('hidden'); openSide(); return; }
     if (t === 'prev') { zap(-1); showTools(); return; }
     if (t === 'next') { zap(1); showTools(); return; }
@@ -1298,10 +1299,12 @@
   var ICO_SOUND = '<svg viewBox="0 0 24 24" aria-hidden="true"><path class="pl" d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path class="sn" d="M15.5 9.2a4 4 0 0 1 0 5.6M18 6.8a7.5 7.5 0 0 1 0 10.4"/></svg>';
   var wallOn = store('favWall') === '1', wallShown = false, wallSig = '', wallTiles = [], wallBig = null, wallIO = null;
   var wallReady = true;
+  var wallFullOpen = false;      // TV: pantalla completa abierta desde el muro (el muro queda en pausa, sin recargar)
+  var wallSoundTile = null, wallLastClick = { t: null, at: 0 };
 
   function wallShouldShow() {
     return wallOn && currentView === 'live' && activeGroup === FAV_GROUP && !searchOpen &&
-      mode === 'none' && !document.hidden;
+      (mode === 'none' || (wallFullOpen && mode === 'full')) && !document.hidden;
   }
   function wallSync() {
     if (!wallReady) return;
@@ -1311,6 +1314,7 @@
     btn.classList.toggle('on', wallOn);
     btn.setAttribute('aria-pressed', wallOn ? 'true' : 'false');
     if (hasFav && wallShouldShow()) {
+      if (wallFullOpen && wallShown) return;           // detrás de la pantalla completa: queda tal cual, en pausa
       var list = listFor(FAV_GROUP), sig = list.map(chKey).join('|');
       if (!wallShown || sig !== wallSig) wallBuild(list, sig);
       $('favWall').classList.remove('hidden'); $('channelGrid').classList.add('hidden');
@@ -1348,16 +1352,16 @@
       }, { root: box, rootMargin: '40px 0px', threshold: 0.2 });
       wallTiles.forEach(function (t) { wallIO.observe(t.el); });
     }
-    if (!store('wallTip')) {
-      store('wallTip', '1');
-      toast(IS_PHONE ? 'Toca un canal para verlo grande con sonido · desliza ↑ para devolverlo'
-                     : 'OK en un canal para verlo grande con sonido · ATRÁS para devolverlo');
+    if (!store('wallTip3')) {
+      store('wallTip3', '1');
+      toast(IS_PHONE ? 'Un toque: activar el sonido · doble toque: pantalla completa'
+                     : 'OK: activar el sonido · OK dos veces: pantalla completa');
     }
   }
   function wallTeardown() {
     if (wallBig) wallCollapse(true);
     if (wallIO) { wallIO.disconnect(); wallIO = null; }
-    wallQueue = [];
+    wallQueue = []; wallFullOpen = false; wallSoundTile = null;
     wallTiles.forEach(wallStop);
     var lostFocus = focused && focused.classList.contains('wt');
     wallTiles = []; wallShown = false; wallSig = '';
@@ -1370,7 +1374,7 @@
   // Decide qué cuadros reproducen: los visibles (hasta WALL_MAX) y siempre el agrandado
   var wallQueue = [], wallQueueTimer = null;
   function wallSchedule() {
-    if (!wallShown) return;
+    if (!wallShown || wallFullOpen) return;
     if (wallBig) { if (!wallBig.live) wallStart(wallBig); return; }   // con uno agrandado no se tocan los demás
     var n = 0;
     wallQueue = [];
@@ -1523,15 +1527,50 @@
     wallSync();
   }
   // Control remoto: OK en un cuadro lo agranda; con uno agrandado ◀ ▶ cambian de canal, OK = pantalla completa
+  // TV: un clic = sonido de ese canal (solo uno suena) · doble clic = pantalla completa
+  function wallTvClick(t) {
+    var now = Date.now(), dbl = wallLastClick.t === t && now - wallLastClick.at < 450;
+    wallLastClick = { t: t, at: dbl ? 0 : now };
+    if (t.failed) { t.failed = false; t.el.classList.remove('err'); wallSchedule(); }
+    if (!t.live) wallStart(t);
+    if (dbl) { wallFull(t); return; }
+    wallSound(wallSoundTile === t ? null : t);
+  }
+  function wallSound(t) {                     // deja con sonido solo a t (o a ninguno)
+    wallTiles.forEach(function (o) {
+      var on = o === t;
+      o.video.muted = !on;
+      o.el.classList.toggle('sound', on);
+      o.el.querySelector('.wt-btn').innerHTML = on ? ICO_SOUND : ICO_PLAY_SOUND;
+      wallQuality(o, on);                     // el que suena puede subir de calidad
+    });
+    wallSoundTile = t;
+    if (t) { var p = t.video.play(); if (p && p.catch) p.catch(function () { }); }
+  }
+  // Al salir de la pantalla completa se vuelve al muro tal como estaba (sin recargarlo)
+  function wallReturn() {
+    if (!wallFullOpen) return false;
+    var ch = nowCh;
+    wallFullOpen = false;
+    stopPlayer();                             // modo 'none' -> el muro sigue armado
+    var t = null;
+    wallTiles.forEach(function (o) { if (ch && chKey(o.c) === chKey(ch)) t = o; });
+    wallTiles.forEach(function (o) { wallHold(o, false); });
+    wallSchedule();
+    if (t) { if (!t.live) wallStart(t); setFocus(t.el); wallSound(t); }
+    return true;
+  }
   function wallActivate(el) {
     var t = wallTiles[+el.getAttribute('data-w')]; if (!t) return;
-    if (t === wallBig) { wallFull(t); return; }
+    wallTvClick(t); return;                    // TV y celular: un toque = sonido · doble toque = pantalla completa
     if (t.failed) { t.failed = false; t.el.classList.remove('err'); }
     wallExpand(t);
   }
   function wallFull(t) {
     var list = listFor(FAV_GROUP), i = t.i;
     wallCollapse(true);
+    wallFullOpen = true;                      // el muro queda en pausa detrás, listo para volver sin recargar
+    wallTiles.forEach(function (o) { o.video.muted = true; wallHold(o, true); });
     playChannel(list, i, FAV_GROUP, 'full');
   }
   function wallKey(k) {                       // devuelve true si la tecla se usó
@@ -1553,7 +1592,7 @@
     var tile = e.target.closest && e.target.closest('.wt'); if (!tile) return;
     var t = wallTiles[+tile.getAttribute('data-w')]; if (!t) return;
     setFocus(t.el);
-    if (e.target.closest('.wt-full')) { wallFull(t); return; }   // ⛶ abre el reproductor normal
+    wallTvClick(t); return;                                     // toque = sonido · doble toque = pantalla completa
     if (t === wallBig) { if (e.target.closest('.wt-btn')) wallSetSound(t, t.video.muted); return; }
     if (t.failed) { t.failed = false; t.el.classList.remove('err'); }
     wallExpand(t);
@@ -1606,6 +1645,19 @@
     void inner.offsetWidth; inner.style.transition = '';
   });
   document.addEventListener('visibilitychange', wallSync);
+  // Vigilante: algunos equipos pausan solos videos sin sonido; si el muro está a la vista, se reanudan
+  // y si un cuadro no avanza durante ~5 s, se vuelve a conectar solo ese cuadro
+  setInterval(function () {
+    if (!wallShown || wallFullOpen || wallBig || document.hidden) return;
+    wallTiles.forEach(function (t) {
+      if (!t.live) { t.stall = 0; return; }
+      var v = t.video, ct = v.currentTime;
+      if (v.paused || ct === t.lastCt) t.stall = (t.stall || 0) + 1; else t.stall = 0;
+      t.lastCt = ct;
+      if (t.stall >= 3) { t.stall = 0; var snd = t === wallSoundTile; wallStop(t); wallStart(t); if (snd) t.video.muted = false; return; }
+      if (v.paused) { var p = v.play(); if (p && p.catch) p.catch(function () { }); }
+    });
+  }, 1500);
 
   // ---------- Inicio ----------
   var splashStart = Date.now();
