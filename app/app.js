@@ -1288,10 +1288,14 @@
   // frente con sonido; deslizándolo hacia arriba vuelve a su lugar. Se activa con el botón «Favoritos en vivo».
   // Videos a la vez (los que están en pantalla). Si un equipo no aguanta tantos, los que fallan muestran «Sin señal».
   var WALL_MAX = 10;
+  var WALL_STALL = IS_PHONE ? 4 : 7;       // vueltas de 1,5 s sin avanzar antes de reconectar (TV: ~10 s)
   var WALL_HINT = IS_PHONE ? 'Desliza ↑ para volver' : '◀ ▶ cambiar · OK pantalla completa · ATRÁS volver';
   var WALL_HLS = {
-    enableWorker: IS_PHONE, startLevel: 0, capLevelToPlayerSize: true,  // calidad según el tamaño del cuadro
-    maxBufferLength: 6, maxMaxBufferLength: 10, backBufferLength: 0,    // buffers chicos: 10 videos a la vez
+    enableWorker: true,                       // el procesamiento del video va en otro hilo: la pantalla no se traba
+    startLevel: 0, testBandwidth: false, abrEwmaDefaultEstimate: 300000,   // parte directo en la calidad más baja
+    capLevelToPlayerSize: true, capLevelOnFPSDrop: true,                   // si el equipo pierde cuadros, no sube
+    maxBufferLength: 12, maxMaxBufferLength: 20, maxBufferSize: 8 * 1000 * 1000, backBufferLength: 0,
+    liveSyncDurationCount: 4, maxStarvationDelay: 6, startFragPrefetch: true,   // más colchón: menos cortes
     manifestLoadingTimeOut: 10000, levelLoadingTimeOut: 10000, fragLoadingTimeOut: 15000
   };
   var ICO_PLAY_SOUND = '<svg viewBox="0 0 24 24" aria-hidden="true"><path class="pl" d="M5 5.5v13l9-6.5z"/><path class="sn" d="M16.5 9.2a4 4 0 0 1 0 5.6M19 6.8a7.5 7.5 0 0 1 0 10.4"/></svg>';
@@ -1340,7 +1344,7 @@
       var el = box.children[i], t = { c: c, i: i, el: el, inner: el.firstChild, video: el.querySelector('video'), hls: null, live: false, visible: !window.IntersectionObserver, failed: false };
       var shown = function () { if (t.live) { el.classList.remove('loading'); el.classList.add('ready'); } };
       t.video.addEventListener('playing', shown);
-      t.video.addEventListener('timeupdate', function () { if (t.video.currentTime > 0 && !el.classList.contains('ready')) shown(); });
+      t.video.addEventListener('timeupdate', function () { if (t.video.currentTime > 0 && t.live && !el.classList.contains('ready')) shown(); });
       t.video.addEventListener('waiting', function () { if (t.live) el.classList.add('loading'); });
       t.video.addEventListener('error', function () { if (t.live && !t.hls) wallFail(t); });
       return t;
@@ -1391,7 +1395,7 @@
     if (wallQueueTimer || !wallQueue.length) return;
     var t = wallQueue.shift();
     if (wallShown && !wallBig && !t.live && t.visible && !t.failed && wallTiles.indexOf(t) >= 0) wallStart(t);
-    wallQueueTimer = setTimeout(function () { wallQueueTimer = null; wallKick(); }, IS_PHONE ? 150 : 300);
+    wallQueueTimer = setTimeout(function () { wallQueueTimer = null; wallKick(); }, IS_PHONE ? 200 : 600);
   }
   function wallStart(t) {
     t.live = true; t.failed = false;
@@ -1452,7 +1456,10 @@
   // Calidad: cuadros chicos en la más baja; el agrandado elige solo según su tamaño
   function wallQuality(t, big) {
     if (!t.hls) return;
-    try { t.hls.autoLevelCapping = big ? -1 : 0; } catch (e) { }
+    try {
+      t.hls.autoLevelCapping = big ? -1 : 0;
+      if (!big && t.hls.levels && t.hls.levels.length > 1) t.hls.nextLevel = 0;   // los cuadros chicos siempre en la más baja
+    } catch (e) { }
   }
   // Mientras hay uno agrandado los demás se pausan: todo el equipo trabaja para el del frente
   function wallHold(t, hold) {
@@ -1542,7 +1549,7 @@
       o.video.muted = !on;
       o.el.classList.toggle('sound', on);
       o.el.querySelector('.wt-btn').innerHTML = on ? ICO_SOUND : ICO_PLAY_SOUND;
-      wallQuality(o, on);                     // el que suena puede subir de calidad
+      wallQuality(o, false);                  // el cuadro es chico: aunque suene, sigue en la calidad más baja
     });
     wallSoundTile = t;
     if (t) { var p = t.video.play(); if (p && p.catch) p.catch(function () { }); }
@@ -1649,12 +1656,16 @@
   // y si un cuadro no avanza durante ~5 s, se vuelve a conectar solo ese cuadro
   setInterval(function () {
     if (!wallShown || wallFullOpen || wallBig || document.hidden) return;
+    var reconnected = false;
     wallTiles.forEach(function (t) {
       if (!t.live) { t.stall = 0; return; }
       var v = t.video, ct = v.currentTime;
       if (v.paused || ct === t.lastCt) t.stall = (t.stall || 0) + 1; else t.stall = 0;
       t.lastCt = ct;
-      if (t.stall >= 3) { t.stall = 0; var snd = t === wallSoundTile; wallStop(t); wallStart(t); if (snd) t.video.muted = false; return; }
+      if (t.stall >= WALL_STALL && !reconnected) {   // de a uno por vuelta, para no recargar el equipo
+        reconnected = true; t.stall = 0;
+        var snd = t === wallSoundTile; wallStop(t); wallStart(t); if (snd) t.video.muted = false; return;
+      }
       if (v.paused) { var p = v.play(); if (p && p.catch) p.catch(function () { }); }
     });
   }, 1500);
