@@ -16,7 +16,7 @@
       try { return typeof window.Android.isTV === 'function' ? !window.Android.isTV() : false; } catch (e) { return false; }
     }
     var touch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
-    return touch && Math.min(screen.width, screen.height) < 900;
+    return touch && Math.min(screen.width, screen.height) < 1100;   // celulares y tablets
   })();
   if (/[?&]modo=celular/.test(location.search)) IS_PHONE = true;   // para probar en un PC
   if (IS_PHONE) {
@@ -744,11 +744,14 @@
     p.classList.toggle('hidden', m === 'none');
     p.classList.toggle('pip', m === 'pip');
     applyPipPos();
+    $('pipMoveBtn').classList.toggle('hidden', m !== 'pip' || IS_PHONE);
+    if (m !== 'pip' && focused === $('pipMoveBtn')) setFocus(document.querySelector('.tab.active') || document.querySelector('.tab'));
     if (m !== 'full') { closeSide(); $('ptools').classList.add('hidden'); }
     if (m === 'full') { if (IS_PHONE) showTools(); else showOsd(); }
   }
   function minimize() {           // pantalla completa -> PiP
     setMode('pip');
+    if (!IS_PHONE && !store('pipTip')) { store('pipTip', '1'); setTimeout(function () { toast('Para mover la ventana: sube con ▲ hasta «⇲ Mover PiP» y aprieta OK'); }, 300); }
     if (currentView !== 'live') showView('live');
     var i = filtered.indexOf(nowCh);
     var el = i >= 0 ? document.querySelector('[data-ch="' + i + '"]') : null;
@@ -819,7 +822,7 @@
     updateSideMarks();
   }
   // Solo se dibujan las filas visibles: moverse por la lista es instantáneo aunque tenga 500 canales
-  var SIDE_ROWS = IS_PHONE ? 14 : 10;
+  var SIDE_ROWS = IS_PHONE ? Math.max(12, Math.ceil(Math.max(window.innerHeight, window.innerWidth) / 54) + 2) : 10;
   function updateSideMarks() {
     var n = sideList.length;
     var start = Math.max(0, Math.min(sideIdx - Math.floor(SIDE_ROWS / 2), n - SIDE_ROWS));
@@ -851,7 +854,7 @@
     $('menuTitle').textContent = c.name;
     var acts = [['play', '▶  Ver en pantalla completa']];
     if (!(mode === 'pip' && nowCh === c)) acts.push(['pip', '⧉  Ver en ventana chica (PiP)']);
-    else acts.push(['pipmove', '⇲  Mover la ventana PiP a otra esquina']);
+    if (mode === 'pip') acts.push(['pipmove', '⇲  Mover la ventana PiP a otra esquina']);
     acts.push(isFav(c) ? ['unfav', '☆  Quitar de favoritos'] : ['fav', '★  Agregar a favoritos']);
     acts.push(isHidden(c) ? ['unhide', '👁  Mostrar canal de nuevo'] : ['hide', '🚫  Ocultar canal (no se ve)']);
     acts.push(['cancel', 'Cancelar']);
@@ -926,6 +929,7 @@
     if (el.classList.contains('mbtn')) { menuAction(el.getAttribute('data-act')); return; }
     if (el.classList.contains('key')) { pressKey(el.getAttribute('data-k')); return; }
     if (el.id === 'voiceBtn') { startVoice(); return; }
+    if (el.id === 'pipMoveBtn') { cyclePip(); return; }
     if (el.id === 'searchBtn') { if (searchOpen) closeSearch(false); else openSearch(); return; }
     if (el.id === 'searchInput') {          // OK en el cuadro de texto: ir al primer resultado (o abrir teclado del sistema)
       var first = document.querySelector('[data-ch="0"]');
