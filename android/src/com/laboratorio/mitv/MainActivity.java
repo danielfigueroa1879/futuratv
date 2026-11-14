@@ -3,6 +3,7 @@ package com.laboratorio.mitv;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
@@ -60,7 +61,14 @@ public class MainActivity extends Activity {
         if (Build.VERSION.SDK_INT >= 21) s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
 
         web.setWebViewClient(new WebViewClient());
-        web.setWebChromeClient(new WebChromeClient());
+        web.setWebChromeClient(new WebChromeClient() {
+            // Sin esto, el WebView muestra una imagen gris/blanco y negro (icono de play) antes de que arranque el video
+            @Override public Bitmap getDefaultVideoPoster() {
+                Bitmap b = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888);
+                b.eraseColor(Color.TRANSPARENT);
+                return b;
+            }
+        });
         web.addJavascriptInterface(new Bridge(), "Android");
         web.loadUrl(startUrl());
 

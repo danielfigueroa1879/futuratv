@@ -786,6 +786,7 @@
   }
   function stopVideo() {
     var video = $('video');
+    video.classList.remove('ready');
     if (hls) { hls.destroy(); hls = null; }
     video.removeAttribute('src'); if (video.load) video.load();
   }
@@ -793,7 +794,7 @@
     $('osd').classList.remove('fade');
     clearTimeout(osdTimer); osdTimer = setTimeout(function () { $('osd').classList.add('fade'); }, 5000);
   }
-  $('video').addEventListener('playing', function () { $('spinner').classList.add('hidden'); });
+  $('video').addEventListener('playing', function () { $('spinner').classList.add('hidden'); $('video').classList.add('ready'); });
   $('video').addEventListener('waiting', function () { $('spinner').classList.remove('hidden'); });
   $('video').addEventListener('error', function () { if (!hls) playError(); });
 
