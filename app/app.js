@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '1.9.3';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '1.9.4';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -827,6 +827,7 @@
     sideGroup = sideGroups().indexOf(zapGroup) >= 0 ? zapGroup : 'Todos';
     renderSide(true);
     $(LIST_H ? 'hbar' : 'side').classList.remove('hidden');
+    $('player').classList.toggle('list-h', LIST_H);
     if (LIST_H) { hbMarkCtrl(); hbTimeTick(); }
     $('osd').classList.add('fade');
     bumpSide();
@@ -870,15 +871,15 @@
 
   // ---------- TV: carrusel horizontal ----------
   function hbRender() {
-    var n = sideList.length, html = '';
-    for (var k = -3; k <= 3; k++) {              // 7 tarjetas: la elegida al centro y vecinas a los lados
+    var n = sideList.length, html = '', digits = Math.max(2, String(n).length);
+    for (var k = -3; k <= 3; k++) {              // 7 tarjetas: la elegida al centro (más grande) y vecinas a los lados
       var i = sideIdx + k, c = sideList[i];
       if (!c) { html += '<div class="hcard empty"></div>'; continue; }
       var now = nowCh && c === nowCh;
       html += '<div class="hcard' + (k === 0 ? ' sel' : '') + (now ? ' now' : '') + '" data-s="' + i + '">' +
-        '<div class="hthumb">' + logoHtml(c, true) + (now ? '<span class="hnow">● VIENDO</span>' : '') + '</div>' +
-        '<div class="hlab"><b>' + ('00' + (i + 1)).slice(-3) + ' - ' + escapeHtml(c.name) + '</b>' +
-        '<small>' + escapeHtml(c.group || groupLabel(sideGroup)) + (isFav(c) ? ' · ★' : '') + '</small></div></div>';
+        '<div class="hthumb">' + logoHtml(c, true) + '</div>' +
+        '<div class="hlab"><b><i>' + ('0000' + (i + 1)).slice(-digits) + '</i> ' + escapeHtml(c.name) + (isFav(c) ? ' <em>★</em>' : '') + '</b>' +
+        (k === 0 ? '<small>' + (now ? 'En reproducción' : escapeHtml(c.group || groupLabel(sideGroup))) + '</small>' : '') + '</div></div>';
     }
     $('hbTrack').innerHTML = n ? html : '<div class="hcard empty"><div class="hlab"><b>Sin canales</b></div></div>';
     $('hbCount').textContent = n ? (sideIdx + 1) + ' / ' + n : '';
@@ -1005,8 +1006,9 @@
     if (!sideOpen || mode !== 'full' || !c || c.isCountry || c === nowCh) return;   // el que ya ves no necesita vista previa
     var box = $('sidePrev'), r, P = $('player').getBoundingClientRect();
     if (LIST_H) {                                  // horizontal: cubre la imagen de la tarjeta elegida
-      var th = $('hbTrack').querySelector('.hcard.sel .hthumb'); if (!th) return;
-      r = th.getBoundingClientRect();
+      var card = $('hbTrack').querySelector('.hcard.sel'); if (!card) return;
+      r = card.getBoundingClientRect();
+      box.querySelector('.sp-lab').innerHTML = card.querySelector('.hlab').innerHTML;   // el nombre va sobre la imagen en vivo
       box.style.left = (r.left - P.left) + 'px'; box.style.top = (r.top - P.top) + 'px';
       box.style.width = r.width + 'px'; box.style.height = r.height + 'px';
     } else {                                       // vertical: recuadro chico entre el nombre y la estrella
