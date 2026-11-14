@@ -546,3 +546,78 @@ html:not(.phone) .player.pip.pos-tl, html:not(.phone) .player.pip.pos-tr { top: 
   border-radius: 0 !important; box-shadow: none !important; transform: none !important;
 }
 .syspip .player > :not(video) { display: none !important; }
+
+/* ---- Favoritos en vivo (celular): muro de videos ---- */
+.wall-toggle { display: none; }
+.phone .wall-toggle {
+  display: inline-flex; align-items: center; gap: 8px; margin-left: auto;
+  font: inherit; font-size: 13px; color: #c9d2e6; background: #1b2442; border: 0;
+  padding: 6px 12px 6px 7px; border-radius: 20px; -webkit-tap-highlight-color: transparent;
+}
+.phone .wall-toggle.hidden { display: none; }
+.wall-toggle .sw { position: relative; width: 30px; height: 18px; border-radius: 9px; background: #3a4569; transition: background .2s; flex: none; }
+.wall-toggle .sw i { position: absolute; left: 2px; top: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: transform .2s; }
+.wall-toggle.on { color: #fff; }
+.wall-toggle.on .sw { background: #22c55e; }
+.wall-toggle.on .sw i { transform: translateX(12px); }
+
+.phone .wall { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; }
+.wt { position: relative; padding-top: 56.25%; border-radius: 12px; background: #111830; }
+.wt-in {
+  position: absolute; inset: 0; border-radius: 12px; overflow: hidden; background: #111830;
+  -webkit-tap-highlight-color: transparent; transform: translateZ(0);
+}
+.wt-in video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: transparent; opacity: 0; transition: opacity .3s; }
+.wt.ready .wt-in video { opacity: 1; }
+.wt-logo { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+.wt-logo img { max-width: 46%; max-height: 46%; object-fit: contain; }
+.wt-logo .ph { width: 40px; height: 40px; font-size: 18px; }
+.wt-name {
+  position: absolute; left: 0; right: 0; bottom: 0; padding: 14px 40px 5px 8px; font-size: 11px; color: #fff;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  background: linear-gradient(transparent, rgba(0,0,0,.7)); pointer-events: none;
+}
+/* botón pequeño, transparente pero activo: reproducir con sonido */
+.wt-btn {
+  position: absolute; right: 5px; bottom: 5px; width: 30px; height: 30px; padding: 6px; border: 0; border-radius: 50%;
+  background: rgba(0,0,0,.35); color: #fff; -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+  box-shadow: 0 0 0 1px rgba(255,255,255,.25); -webkit-tap-highlight-color: transparent;
+}
+.wt-btn svg { width: 100%; height: 100%; display: block; }
+.wt-btn .pl { fill: currentColor; }
+.wt-btn .sn { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.wt-btn:active { transform: scale(.9); }
+.wt-spin { position: absolute; left: 7px; top: 7px; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.25); border-top-color: #fff; border-radius: 50%; animation: spin .8s linear infinite; display: none; }
+.wt.loading .wt-spin { display: block; }
+.wt-err { position: absolute; inset: auto 6px 30px; text-align: center; font-size: 10px; color: #fca5a5; display: none; }
+.wt.err .wt-err { display: block; }
+.wt.err .wt-logo { opacity: .35; }
+.wt-hint, .wt-full { display: none; }
+
+/* agrandado al frente */
+.wall-shade { position: fixed; inset: 0; z-index: 60; background: rgba(4,8,24,.0); transition: background .28s; }
+.wall-shade.show { background: rgba(4,8,24,.82); }
+.wt-in.big {
+  position: fixed; inset: auto; z-index: 61; border-radius: 14px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.8), 0 0 0 2px rgba(139,92,246,.8);
+  transition: left .28s cubic-bezier(.2,.8,.2,1), top .28s cubic-bezier(.2,.8,.2,1), width .28s cubic-bezier(.2,.8,.2,1), height .28s cubic-bezier(.2,.8,.2,1), transform .2s, opacity .2s;
+  touch-action: none;
+}
+.wt-in.big.drag { transition: none; }
+.wt-in.big video { object-fit: contain; background: #000; }
+.wt-in.big .wt-name { font-size: 14px; padding: 22px 52px 8px 12px; }
+.wt-in.big .wt-btn { width: 38px; height: 38px; padding: 8px; right: 8px; bottom: 8px; }
+.wt.sound .wt-btn { background: rgba(139,92,246,.55); }
+.wt-in.big .wt-hint {
+  display: block; position: absolute; left: 50%; top: 8px; transform: translateX(-50%);
+  font-size: 11px; color: rgba(255,255,255,.85); background: rgba(0,0,0,.35); padding: 3px 10px; border-radius: 10px;
+  pointer-events: none; animation: wallHint 3s ease forwards;
+}
+@keyframes wallHint { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
+.wt-in.big .wt-full {
+  display: block; position: absolute; right: 8px; top: 8px; width: 34px; height: 34px; border: 0; border-radius: 50%;
+  background: rgba(0,0,0,.35); color: #fff; font-size: 18px; line-height: 34px; box-shadow: 0 0 0 1px rgba(255,255,255,.25);
+}
+@media (orientation: landscape) and (max-height: 520px) {
+  .phone .wall { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+}

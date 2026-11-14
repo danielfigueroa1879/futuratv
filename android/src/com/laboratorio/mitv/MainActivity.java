@@ -315,6 +315,7 @@ public class MainActivity extends Activity {
         super.onResume();
         hideSystemUi();
         web.onResume();
+        web.evaluateJavascript("window.mitvResume && window.mitvResume()", null);
         if (System.currentTimeMillis() - lastUpdateCheck > UPDATE_EVERY_MS) checkForUpdate();
     }
 

@@ -30,6 +30,7 @@
     <div class="live-head">
       <h2>Canales en vivo</h2>
       <button class="chip search-btn focusable" id="searchBtn"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg>Buscar</button>
+      <button class="wall-toggle hidden" id="wallToggle" aria-pressed="false" title="Ver los favoritos en vivo"><span class="sw"><i></i></span>Favoritos en vivo</button>
       <div class="group-bar" id="groupBar"></div>
     </div>
     <div class="search hidden" id="searchPanel">
@@ -38,7 +39,9 @@
     </div>
     <p class="status" id="liveStatus">Cargando lista de canales…</p>
     <div class="grid channels" id="channelGrid"></div>
+    <div class="grid wall hidden" id="favWall"></div>
   </main>
+  <div class="wall-shade hidden" id="wallShade"></div>
 
   <!-- SETTINGS -->
   <main class="view hidden" id="view-settings">
