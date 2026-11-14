@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '1.9.8';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '1.9.9';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -1007,7 +1007,7 @@
     var box = $('sidePrev'), r, P = $('player').getBoundingClientRect();
     if (LIST_H) {                                  // horizontal: cubre la imagen de la tarjeta elegida
       var card = $('hbTrack').querySelector('.hcard.sel'); if (!card) return;
-      r = card.querySelector('.hthumb').getBoundingClientRect();   // la imagen en vivo va dentro del marco de vidrio
+      r = card.getBoundingClientRect();
       box.querySelector('.sp-lab').innerHTML = card.querySelector('.hlab').innerHTML;   // el nombre va sobre la imagen en vivo
       box.style.left = (r.left - P.left) + 'px'; box.style.top = (r.top - P.top) + 'px';
       box.style.width = r.width + 'px'; box.style.height = r.height + 'px';
