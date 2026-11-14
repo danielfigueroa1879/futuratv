@@ -211,3 +211,19 @@ html, body {
 
 .side-count { font-size: 18px; color: #9aa6c2; padding: 0 30px 12px; }
 .side-list { overflow: hidden; }
+
+/* ---- Voz ---- */
+.mic {
+  width: 64px; height: 64px; border-radius: 50%; border: 0; flex-shrink: 0;
+  background: linear-gradient(135deg, #22d3ee, #8b5cf6); color: #fff; font-size: 30px;
+}
+.mic.focused { transform: scale(1.12); outline: 4px solid #fff !important; }
+.mic.on { animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(139,92,246,.7); } 50% { box-shadow: 0 0 0 18px rgba(139,92,246,0); } }
+.key[data-k="MIC"] { background: linear-gradient(135deg, #0e7490, #6d28d9); }
+
+/* ---- Internacional: recuadros de países ---- */
+.ch.country { background: linear-gradient(160deg, #13254d, #24164a); }
+.ch.country .globe { width: 80px; height: 80px; font-size: 46px; background: transparent; }
+.ch.country .nm { font-size: 24px; font-weight: 700; }
+.ch.country .cnt { font-size: 18px; color: #9aa6c2; }

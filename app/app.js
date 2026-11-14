@@ -38,6 +38,28 @@
   var LOCAL_M3U = 'channels/chile.m3u';                              // copia incluida, por si no hay conexión con m3u.cl
   var DEFAULT_M3U = 'https://iptv-org.github.io/iptv/countries/cl.m3u'; // lista extra (se cambia en Ajustes)
   var EXTRA_GROUP = 'Más canales';
+  // Canales gratuitos de todo el mundo (proyecto Free-TV/IPTV en GitHub)
+  var INTL_URL = 'https://raw.githubusercontent.com/Free-TV/IPTV/master/playlist.m3u8';
+  var INTL_GROUP = '🌎 Internacional', INTL_PREFIX = 'intl:';
+  var INTL_FIRST = ['Argentina', 'Mexico', 'Spain', 'Peru', 'Venezuela', 'Costa Rica', 'Colombia', 'Uruguay', 'Ecuador',
+    'Bolivia', 'Paraguay', 'Dominican Republic', 'Cuba', 'Panama', 'Guatemala', 'Honduras', 'El Salvador', 'Nicaragua',
+    'Puerto Rico', 'News (ES)', 'Chile'];
+  var INTL_ES = {
+    'Mexico': 'México', 'Spain': 'España', 'Peru': 'Perú', 'News (ES)': 'Noticias en español', 'Italy': 'Italia',
+    'VOD Italy': 'Italia (a pedido)', 'Poland': 'Polonia', 'Hungary': 'Hungría', 'Greece': 'Grecia', 'Russia': 'Rusia',
+    'UK': 'Reino Unido', 'Ukraine': 'Ucrania', 'News': 'Noticias en inglés', 'United Arab Emirates': 'Emiratos Árabes',
+    'Germany': 'Alemania', 'France': 'Francia', 'USA': 'Estados Unidos', 'Czech Republic': 'República Checa',
+    'VOD Movies (EN)': 'Películas a pedido (inglés)', 'Croatia': 'Croacia', 'Korea': 'Corea', '日本 / Japan': 'Japón',
+    'Canada': 'Canadá', 'Ireland': 'Irlanda', 'Belarus': 'Bielorrusia', 'Turkey': 'Turquía', 'Romania': 'Rumania',
+    'Lebanon': 'Líbano', 'Sweden': 'Suecia', 'Saudi Arabia': 'Arabia Saudita', 'Iraq': 'Irak', 'Taiwan': 'Taiwán',
+    'Netherlands': 'Países Bajos', 'Egypt': 'Egipto', 'Denmark': 'Dinamarca', 'Brazil': 'Brasil', 'Lithuania': 'Lituania',
+    'Belgium': 'Bélgica', 'News (AR)': 'Noticias en árabe', 'Business': 'Negocios', 'Switzerland': 'Suiza',
+    'Norway': 'Noruega', 'Weather': 'Clima', 'Music (EN)': 'Música (inglés)', 'Finland': 'Finlandia',
+    'North Macedonia': 'Macedonia del Norte', 'Iran': 'Irán', 'Bosnia and Herzegovina': 'Bosnia', 'Panama': 'Panamá',
+    'Dominican Republic': 'República Dominicana', 'Slovakia': 'Eslovaquia', 'Cyprus': 'Chipre', 'Latvia': 'Letonia',
+    'Kenya': 'Kenia', 'North Korea': 'Corea del Norte', 'Azerbaijan': 'Azerbaiyán', 'Moldova': 'Moldavia',
+    'Qatar': 'Catar', 'Turkmenistan': 'Turkmenistán', 'Macau': 'Macao', 'Albania': 'Albania', 'Japan': 'Japón'
+  };
   var KEY = { LEFT: 37, UP: 38, RIGHT: 39, DOWN: 40, ENTER: 13, BACK: 461, BACKSPACE: 8, ESC: 27, CH_UP: 33, CH_DOWN: 34,
     RED: 403, GREEN: 404, YELLOW: 405, BLUE: 406, MENU: 1001, M: 77, P: 80 };
 
@@ -199,7 +221,7 @@
         var comma = line.lastIndexOf(',');
         var rawName = comma >= 0 ? line.slice(comma + 1) : '';
         meta = {
-          name: rawName.replace(/\s*\|\s*CL\s*$/, '').replace(/✪/g, '')
+          name: rawName.replace(/\s*\|\s*CL\s*$/, '').replace(/[✪\u24B6-\u24E9]/g, '')
             .replace(/\s*[\[(][^\])]*[\])]\s*/g, ' ').replace(/\s+/g, ' ').trim() || 'Canal',
           logo: attr('tvg-logo'),
           star: rawName.indexOf('✪') >= 0,
@@ -286,7 +308,8 @@
       .then(sortChile)
       .catch(function () { return []; });
     var extra = cachedGet(extraUrl, SIX_H).then(parseM3U).catch(function () { return []; });
-    Promise.all([chile, extra]).then(function (lists) {
+    var intl = cachedGet(INTL_URL, SIX_H).then(parseM3U).catch(function () { return []; });
+    Promise.all([chile, extra, intl]).then(function (lists) {
       var seen = {};
       channels = [];
       lists[0].forEach(function (c) { seen[normName(c.name)] = 1; channels.push(c); });
@@ -294,6 +317,16 @@
         var k = normName(c.name);
         if (seen[k]) return;           // ya está en la lista chilena
         seen[k] = 1; c.group = EXTRA_GROUP; channels.push(c);
+      });
+      lists[2].forEach(function (c) {
+        if (/youtube\.com|youtu\.be|twitch\.tv/i.test(c.url)) return;   // no se pueden reproducir directo
+        var k = normName(c.name);
+        if (seen[k]) return;
+        seen[k] = 1;
+        c.intl = true;
+        c.country = c.group || 'Otros';
+        c.group = INTL_PREFIX + c.country;
+        channels.push(c);
       });
       if (!channels.length) throw new Error('las listas están vacías');
       activeGroup = listFor(FAV_GROUP).length ? FAV_GROUP : 'Todos';
@@ -343,27 +376,44 @@
       });
     }
     if (group === FAV_GROUP) return vis.filter(isFav);
-    if (group === 'Todos') return vis;
+    if (group === 'Todos') return vis.filter(function (c) { return !c.intl; });
+    if (group === INTL_GROUP) return intlCountries(vis);
     return vis.filter(function (c) { return c.group === group; });
   }
+  function countryName(c) { return INTL_ES[c] || c; }
+  // Recuadros de países para la sección Internacional
+  function intlCountries(vis) {
+    var counts = {};
+    vis.forEach(function (c) { if (c.intl) counts[c.country] = (counts[c.country] || 0) + 1; });
+    return Object.keys(counts).sort(function (a, b) {
+      var ia = INTL_FIRST.indexOf(a), ib = INTL_FIRST.indexOf(b);
+      if (ia >= 0 || ib >= 0) return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib);
+      return countryName(a).localeCompare(countryName(b), 'es');
+    }).map(function (k) { return { isCountry: true, country: k, name: countryName(k), count: counts[k] }; });
+  }
+  function intlCount() { return channels.filter(function (c) { return c.intl && !isHidden(c); }).length; }
   function buildGroups() {
     var g = [];
     if (listFor(FAV_GROUP).length) g.push(FAV_GROUP);
     g.push('Todos');
     var seen = {};
     listFor('Todos').forEach(function (c) { if (!seen[c.group]) { seen[c.group] = 1; g.push(c.group); } });
+    if (intlCount()) g.push(INTL_GROUP);
     if (Object.keys(hiddenSet).length && listFor(HID_GROUP).length) g.push(HID_GROUP);
     groups = g;
-    if (groups.indexOf(activeGroup) < 0 && activeGroup !== SEARCH_GROUP) activeGroup = groups[0];
+    var inCountry = activeGroup.indexOf(INTL_PREFIX) === 0 && listFor(activeGroup).length;
+    if (groups.indexOf(activeGroup) < 0 && activeGroup !== SEARCH_GROUP && !inCountry) activeGroup = groups[0];
   }
   function groupLabel(g) {
     if (g === HID_GROUP) return '🚫 Ocultos (' + listFor(HID_GROUP).length + ')';
+    if (g.indexOf(INTL_PREFIX) === 0) return '🌎 ' + countryName(g.slice(INTL_PREFIX.length));
     return g;
   }
 
   function renderGroups() {
     $('groupBar').innerHTML = groups.map(function (g) {
-      return '<button class="chip focusable' + (g === activeGroup ? ' active' : '') + '" data-group="' + escapeHtml(g) + '">' + escapeHtml(groupLabel(g)) + '</button>';
+      var on = g === activeGroup || (g === INTL_GROUP && activeGroup.indexOf(INTL_PREFIX) === 0);
+      return '<button class="chip focusable' + (on ? ' active' : '') + '" data-group="' + escapeHtml(g) + '">' + escapeHtml(groupLabel(g)) + '</button>';
     }).join('');
   }
 
@@ -375,6 +425,10 @@
   function renderChannels() {
     filtered = listFor(activeGroup);
     $('channelGrid').innerHTML = filtered.map(function (c, i) {
+      if (c.isCountry) {
+        return '<button class="ch country focusable" data-ch="' + i + '"><div class="ph globe">🌎</div>' +
+          '<span class="nm">' + escapeHtml(c.name) + '</span><span class="cnt">' + c.count + ' canales</span></button>';
+      }
       var now = nowCh && chKey(nowCh) === chKey(c);
       return '<button class="ch focusable' + (now ? ' now' : '') + '" data-ch="' + i + '">' +
         (isFav(c) ? '<span class="badge fav">★</span>' : '') + (now ? '<span class="badge live">EN VIVO</span>' : '') +
@@ -408,11 +462,28 @@
   }
   $('channelGrid').addEventListener('scroll', scheduleLogos);
 
+  function updateCountryStatus() {
+    $('liveStatus').textContent = '🌎 Internacional › ' + countryName(activeGroup.slice(INTL_PREFIX.length)) + ' · ' +
+      filtered.length + ' canales · ATRÁS para volver a los países';
+  }
+  function openCountry(item) {
+    activeGroup = INTL_PREFIX + item.country;
+    renderGroups(); renderChannels(); markPlaying(); updateCountryStatus();
+    setFocus(gridEl(0));
+  }
+  function backToCountries() {
+    var country = activeGroup.slice(INTL_PREFIX.length);
+    activeGroup = INTL_GROUP;
+    renderGroups(); renderChannels(); refreshChannels();
+    for (var i = 0; i < filtered.length; i++) if (filtered[i].country === country) { setFocus(gridEl(i)); scrollGridTo(gridEl(i)); break; }
+  }
+
   // Vuelve a dibujar todo manteniendo el foco en una posición parecida
   function refreshChannels() {
     var idx = focused && focused.hasAttribute('data-ch') ? +focused.getAttribute('data-ch') : -1;
     buildGroups(); renderGroups(); renderChannels();
-    if (searchOpen) updateSearchStatus(); else $('liveStatus').textContent = listFor('Todos').length + ' canales' +
+    if (searchOpen) updateSearchStatus(); else if (activeGroup.indexOf(INTL_PREFIX) === 0) updateCountryStatus();
+    else $('liveStatus').textContent = listFor('Todos').length + ' canales de Chile' + (intlCount() ? ' · ' + intlCount() + ' internacionales' : '') +
       (Object.keys(favs).length ? ' · ' + listFor(FAV_GROUP).length + ' favoritos' : '') +
       (listFor(HID_GROUP).length ? ' · ' + listFor(HID_GROUP).length + ' ocultos' : '');
     if (idx >= 0 && currentView === 'live') {
@@ -428,9 +499,9 @@
     ['K', 'L', 'M', 'N', 'Ñ', 'O', 'P', 'Q', 'R', 'S'],
     ['T', 'U', 'V', 'W', 'X', 'Y', 'Z', '1', '2', '3'],
     ['4', '5', '6', '7', '8', '9', '0', '+', 'DEL'],
-    ['SPACE', 'CLEAR', 'CLOSE']
+    ['MIC', 'SPACE', 'CLEAR', 'CLOSE']
   ];
-  var KBD_LABEL = { DEL: '⌫ Borrar', SPACE: 'Espacio', CLEAR: 'Borrar todo', CLOSE: '✕ Cerrar búsqueda' };
+  var KBD_LABEL = { MIC: '🎤 Buscar por voz', DEL: '⌫ Borrar', SPACE: 'Espacio', CLEAR: 'Borrar todo', CLOSE: '✕ Cerrar búsqueda' };
   function renderKeyboard() {
     $('kbd').innerHTML = KBD_ROWS.map(function (row) {
       return '<div class="krow">' + row.map(function (k) {
@@ -470,9 +541,66 @@
     else if (k === 'SPACE') searchQuery += ' ';
     else if (k === 'CLEAR') searchQuery = '';
     else if (k === 'CLOSE') { closeSearch(false); return; }
+    else if (k === 'MIC') { startVoice(); return; }
     else searchQuery += k.toLowerCase();
     updateSearch();
   }
+  // ---------- Búsqueda por voz ----------
+  // Android: reconocedor de voz de Google del dispositivo. Navegador de PC: Web Speech API.
+  var listening = false;
+  function startVoice() {
+    if (listening) return;
+    if (IS_ANDROID) {
+      if (typeof window.Android.voiceSearch !== 'function') { toast('Para buscar por voz instala la nueva versión del APK'); return; }
+      if (!window.Android.voiceSearch()) { toast('Este dispositivo no tiene búsqueda por voz (instala "Google" desde la tienda)'); return; }
+      setListening(true);
+      return;
+    }
+    var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { toast('Búsqueda por voz no disponible aquí. En el TV LG usa el micrófono del Magic Remote sobre el cuadro de texto.'); return; }
+    var rec = new SR();
+    rec.lang = 'es-CL'; rec.interimResults = false; rec.maxAlternatives = 1;
+    rec.onresult = function (e) { window.mitvVoiceResult(e.results[0][0].transcript); };
+    rec.onerror = function () { setListening(false); toast('No te escuché bien, intenta otra vez'); };
+    rec.onend = function () { setListening(false); };
+    try { rec.start(); setListening(true); } catch (e) { toast('No se pudo usar el micrófono'); }
+  }
+  function setListening(on) {
+    listening = on;
+    $('voiceBtn').classList.toggle('on', on);
+    if (on) toast('🎤 Habla ahora: di el nombre del canal');
+  }
+  // Limpia frases como "pon el canal 13" -> "canal 13"
+  function cleanVoice(t) {
+    t = String(t || '').toLowerCase().trim().replace(/[.,!?¿¡]/g, '');
+    var prev;
+    do {
+      prev = t;
+      t = t.replace(/^(quiero ver|quiero|pon(me|er)?|coloca(r)?|ver|mira(r)?|busca(r)?|buscame|búscame|abre|abrir|muéstrame|muestrame|el|la|los|las|un|una)\s+/, '');
+    } while (t !== prev);
+    return t.trim();
+  }
+  window.mitvVoiceResult = function (text) {
+    setListening(false);
+    var q = cleanVoice(text);
+    if (!q) { toast('No te escuché bien, intenta otra vez'); return; }
+    if (mode === 'full') minimize();
+    if (currentView !== 'live') showView('live');
+    if (!searchOpen) openSearch();
+    searchQuery = q; updateSearch();
+    var first = gridEl(0);
+    if (filtered.length && first) { setFocus(first); toast('🎤 «' + q + '»: ' + filtered.length + ' resultado' + (filtered.length === 1 ? '' : 's') + ' · OK para ver'); }
+    else toast('🎤 «' + q + '»: no encontré canales con ese nombre');
+  };
+  // Botón de micrófono / búsqueda del control remoto
+  window.mitvVoiceKey = function () {
+    if (menuOpen) closeMenu();
+    if (mode === 'full') minimize();
+    if (currentView !== 'live') showView('live');
+    if (!searchOpen) openSearch();
+    startVoice();
+  };
+
   $('searchInput').addEventListener('input', function () { searchQuery = $('searchInput').value; updateSearch(); });
   renderKeyboard();
 
@@ -575,7 +703,11 @@
   $('video').addEventListener('error', function () { if (!hls) playError(); });
 
   // Lista lateral (en pantalla completa)
-  function sideGroups() { return groups.filter(function (g) { return g !== HID_GROUP; }); }
+  function sideGroups() {
+    var g = groups.filter(function (x) { return x !== HID_GROUP && x !== INTL_GROUP; });
+    if (zapGroup.indexOf(INTL_PREFIX) === 0) g.push(zapGroup);
+    return g;
+  }
   function openSide() {
     sideOpen = true;
     sideGroup = sideGroups().indexOf(zapGroup) >= 0 ? zapGroup : 'Todos';
@@ -695,7 +827,10 @@
   function contextChannel() {
     if (mode === 'full' && sideOpen) return sideList[sideIdx] || null;
     if (mode === 'full') return nowCh;
-    if (focused && focused.hasAttribute('data-ch')) return filtered[+focused.getAttribute('data-ch')] || null;
+    if (focused && focused.hasAttribute('data-ch')) {
+      var it = filtered[+focused.getAttribute('data-ch')];
+      return it && !it.isCountry ? it : null;
+    }
     return null;
   }
 
@@ -704,6 +839,7 @@
     if (!el) return;
     if (el.classList.contains('mbtn')) { menuAction(el.getAttribute('data-act')); return; }
     if (el.classList.contains('key')) { pressKey(el.getAttribute('data-k')); return; }
+    if (el.id === 'voiceBtn') { startVoice(); return; }
     if (el.id === 'searchBtn') { if (searchOpen) closeSearch(false); else openSearch(); return; }
     if (el.id === 'searchInput') {          // OK en el cuadro de texto: ir al primer resultado (o abrir teclado del sistema)
       var first = document.querySelector('[data-ch="0"]');
@@ -720,6 +856,7 @@
     }
     if (el.hasAttribute('data-ch')) {
       var c = filtered[+el.getAttribute('data-ch')];
+      if (c && c.isCountry) { openCountry(c); return; }
       if (mode === 'pip' && nowCh && chKey(nowCh) === chKey(c)) { setMode('full'); return; } // 2º OK = pantalla completa
       playChannel(filtered.slice(), +el.getAttribute('data-ch'), activeGroup, mode === 'pip' ? 'pip' : 'full');
       return;
@@ -746,6 +883,8 @@
     if (mode === 'full' && sideOpen) { closeSide(); return true; }
     if (mode === 'full') { minimize(); return true; }   // pantalla completa -> PiP
     if (mode === 'pip') { stopPlayer(); return true; }  // PiP -> cerrar video
+    if (activeGroup.indexOf(INTL_PREFIX) === 0 && currentView === 'live' &&
+        focused && (focused.hasAttribute('data-ch') || focused.classList.contains('chip'))) { backToCountries(); return true; }
     if (searchOpen) {                                   // en resultados: volver al teclado; en teclado: cerrar búsqueda
       if (focused && focused.hasAttribute('data-ch')) { setFocus(document.querySelector('.key[data-k="A"]')); return true; }
       closeSearch(false); return true;
