@@ -52,6 +52,9 @@
   var LOCAL_M3U = 'channels/chile.m3u';                              // copia incluida, por si no hay conexión con m3u.cl
   var DEFAULT_M3U = 'https://iptv-org.github.io/iptv/countries/cl.m3u'; // lista extra (se cambia en Ajustes)
   var EXTRA_GROUP = 'Más canales';
+  // Enlaces revisados que no funcionan (404, dominio inexistente, certificado inválido): no se muestran
+  var DEAD_LIST = 'channels/caidos.json';
+  function deadKey(u) { return String(u).replace(/[?&]PlaylistM3UCL$/, '').replace(/^http:/, 'https:').replace(/(\/\/[^\/:]+):\//, '$1/'); }
   // Canales gratuitos de todo el mundo (proyecto Free-TV/IPTV en GitHub)
   var INTL_URL = 'https://raw.githubusercontent.com/Free-TV/IPTV/master/playlist.m3u8';
   var INTL_GROUP = '🌎 Internacional', INTL_PREFIX = 'intl:';
@@ -323,8 +326,13 @@
       .catch(function () { return []; });
     var extra = cachedGet(extraUrl, SIX_H).then(parseM3U).catch(function () { return []; });
     var intl = cachedGet(INTL_URL, SIX_H).then(parseM3U).catch(function () { return []; });
-    Promise.all([chile, extra, intl]).then(function (lists) {
-      var seen = {};
+    var dead = getText(DEAD_LIST).then(function (t) {
+      var o = {}; (JSON.parse(t) || []).forEach(function (u) { o[deadKey(u)] = 1; }); return o;
+    }).catch(function () { return {}; });
+    Promise.all([chile, extra, intl, dead]).then(function (lists) {
+      var seen = {}, deadSet = lists[3];
+      var alive = function (c) { return !deadSet[deadKey(c.url)]; };
+      lists[0] = lists[0].filter(alive); lists[1] = lists[1].filter(alive); lists[2] = lists[2].filter(alive);
       channels = [];
       lists[0].forEach(function (c) { seen[normName(c.name)] = 1; channels.push(c); });
       lists[1].forEach(function (c) {
