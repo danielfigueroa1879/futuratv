@@ -1287,7 +1287,7 @@
   // Todos los favoritos se reproducen a la vez, sin sonido y en baja calidad. Al tocar uno se agranda al
   // frente con sonido; deslizándolo hacia arriba vuelve a su lugar. Se activa con el botón «Favoritos en vivo».
   // Videos a la vez (los que están en pantalla). Si un equipo no aguanta tantos, los que fallan muestran «Sin señal».
-  var WALL_MAX = 10;
+  var WALL_MAX = IS_PHONE ? 10 : 6;          // TV: 6 grandes en 3 columnas (si hay más, se ven bajando)
   var WALL_STALL = IS_PHONE ? 4 : 7;       // vueltas de 1,5 s sin avanzar antes de reconectar (TV: ~10 s)
   var WALL_HINT = IS_PHONE ? 'Desliza ↑ para volver' : '◀ ▶ cambiar · OK pantalla completa · ATRÁS volver';
   var WALL_HLS = {
