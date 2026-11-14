@@ -12,6 +12,9 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.speech.RecognitionListener;
+import android.speech.RecognizerIntent;
+import android.speech.SpeechRecognizer;
 import android.util.Rational;
 import android.view.KeyEvent;
 import android.view.View;
@@ -21,6 +24,8 @@ import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+
+import java.util.ArrayList;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -53,6 +58,75 @@ public class MainActivity extends Activity {
         return pm.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
                 || pm.hasSystemFeature("amazon.hardware.fire_tv")
                 || !pm.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN);
+    }
+
+    // ---------- Búsqueda por voz ----------
+    private static final int REQ_MIC = 7;
+    private SpeechRecognizer recognizer;
+
+    private void js(String code) {
+        runOnUiThread(() -> web.evaluateJavascript(code, null));
+    }
+
+    private static String jsStr(String s) {
+        return JSONObject.quote(s == null ? "" : s);
+    }
+
+    private void startVoice() {
+        if (Build.VERSION.SDK_INT >= 23
+                && checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            js("window.mitvVoiceState('permission')");
+            requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, REQ_MIC);
+            return;
+        }
+        stopVoice();
+        try {
+            recognizer = SpeechRecognizer.createSpeechRecognizer(this);
+            recognizer.setRecognitionListener(new RecognitionListener() {
+                @Override public void onReadyForSpeech(Bundle b) { js("window.mitvVoiceState('listening')"); }
+                @Override public void onBeginningOfSpeech() { js("window.mitvVoiceState('speaking')"); }
+                @Override public void onRmsChanged(float rms) { js("window.mitvVoiceLevel(" + rms + ")"); }
+                @Override public void onBufferReceived(byte[] b) { }
+                @Override public void onEndOfSpeech() { js("window.mitvVoiceState('processing')"); }
+                @Override public void onError(int error) { stopVoice(); js("window.mitvVoiceError(" + error + ")"); }
+                @Override public void onResults(Bundle r) {
+                    ArrayList<String> l = r.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+                    stopVoice();
+                    if (l != null && !l.isEmpty()) js("window.mitvVoiceResult(" + jsStr(l.get(0)) + ")");
+                    else js("window.mitvVoiceError(7)");
+                }
+                @Override public void onPartialResults(Bundle r) {
+                    ArrayList<String> l = r.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+                    if (l != null && !l.isEmpty() && l.get(0).length() > 0) js("window.mitvVoicePartial(" + jsStr(l.get(0)) + ")");
+                }
+                @Override public void onEvent(int type, Bundle b) { }
+            });
+            Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+            i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+            i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-CL");
+            i.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
+            i.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1);
+            i.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, getPackageName());
+            recognizer.startListening(i);
+        } catch (Exception e) {
+            stopVoice();
+            js("window.mitvVoiceError(3)");
+        }
+    }
+
+    private void stopVoice() {
+        if (recognizer != null) {
+            try { recognizer.cancel(); recognizer.destroy(); } catch (Exception ignored) { }
+            recognizer = null;
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
+        super.onRequestPermissionsResult(requestCode, permissions, results);
+        if (requestCode != REQ_MIC) return;
+        if (results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) startVoice();
+        else js("window.mitvVoiceError('permiso')");
     }
 
     // ---------- PiP del sistema (celular): el video sigue en una ventanita al salir de la app ----------
@@ -169,6 +243,10 @@ public class MainActivity extends Activity {
             }
             return true;
         }
+        if (code == KeyEvent.KEYCODE_SEARCH || code == KeyEvent.KEYCODE_VOICE_ASSIST) {
+            if (down && e.getRepeatCount() == 0) js("window.mitvVoiceKey && window.mitvVoiceKey()");
+            return true;
+        }
         int webKey = webKeyFor(code);
         if (webKey != 0) {
             // Se envían keydown (con "repeat" si se mantiene) y keyup: así funciona "mantener OK".
@@ -270,7 +348,9 @@ public class MainActivity extends Activity {
         f.delete();
     }
 
-    private void checkForUpdate() {
+    private void checkForUpdate() { checkForUpdate(false); }
+
+    private void checkForUpdate(final boolean manual) {
         lastUpdateCheck = System.currentTimeMillis();
         new Thread(() -> {
             try {
@@ -280,7 +360,11 @@ public class MainActivity extends Activity {
                 if (!base.endsWith("/")) base += "/";
                 JSONObject remote = new JSONObject(new String(httpGet(base + "version.json?t=" + System.currentTimeMillis()), "UTF-8"));
                 String version = remote.optString("version", "0");
-                if (compareVersions(version, cur.optString("version", "0")) <= 0) return;
+                if (compareVersions(version, cur.optString("version", "0")) <= 0) {
+                    if (manual) js("window.mitvUpdateStatus && window.mitvUpdateStatus('ok')");
+                    return;
+                }
+                if (manual) js("window.mitvUpdateStatus && window.mitvUpdateStatus('downloading')");
 
                 File tmp = new File(getFilesDir(), "www_new");
                 deleteRec(tmp);
@@ -312,6 +396,7 @@ public class MainActivity extends Activity {
                         "window.mitvUpdateReady && window.mitvUpdateReady('" + safe + "')", null));
             } catch (Exception ignored) {
                 // sin internet o archivo con error: se sigue usando la versión actual
+                if (manual) js("window.mitvUpdateStatus && window.mitvUpdateStatus('error')");
             }
         }).start();
     }
@@ -334,6 +419,7 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        stopVoice();
         web.destroy();
         super.onDestroy();
     }
@@ -379,6 +465,19 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public boolean isTV() { return isTv(); }
+
+        @JavascriptInterface
+        public boolean voiceSearch() {
+            if (!SpeechRecognizer.isRecognitionAvailable(MainActivity.this)) return false;
+            runOnUiThread(MainActivity.this::startVoice);
+            return true;
+        }
+
+        @JavascriptInterface
+        public void voiceCancel() { runOnUiThread(MainActivity.this::stopVoice); }
+
+        @JavascriptInterface
+        public void checkUpdateNow() { checkForUpdate(true); }
 
         @JavascriptInterface
         public void setPlaying(boolean playing) { videoPlaying = playing; }

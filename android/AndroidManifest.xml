@@ -7,11 +7,17 @@
     <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="34" />
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
     <!-- Android 11+: poder ver y abrir las otras apps instaladas -->
     <queries>
+        <!-- Android 11+: encontrar el servicio de reconocimiento de voz (app Google) -->
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
