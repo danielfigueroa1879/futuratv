@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.1.1';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.1.2';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -851,12 +851,14 @@
     $('pipName').textContent = nowCh.name;
     $('osdLogo').src = nowCh.logo || ''; $('osdLogo').style.display = nowCh.logo ? '' : 'none';
     showOsd();
-    var zapping = !!(hls || $('video').getAttribute('src'));
     stopVideo();
     clearTimeout(startTimer);
     // Al cambiar rápido de canal (▲▼) solo se conecta al que dejas puesto
     var target = nowCh;
-    startTimer = setTimeout(function () { if (target === nowCh) startStream(target); }, zapping ? 350 : 0);
+    var wait = zapRapid ? 350 : 0;                // la espera es solo para ▲▼ (pasar canales rápido): carga el que dejas
+    zapRapid = false;
+    if (wait) startTimer = setTimeout(function () { if (target === nowCh) startStream(target); }, wait);
+    else startStream(target);
     markPlaying();
     if (sideOpen) updateSideMarks();
   }
@@ -891,17 +893,46 @@
   }
   function warmNow(list) {                        // pre-carga inmediata de varios canales
     list.forEach(function (c) {
-      if (!c || !c.url || c.isCountry || c.yt || warmed[c.url] > Date.now() - 20000) return;
+      if (!c || !c.url || c.isCountry || c.yt || warmed[c.url] > Date.now() - 4000) return;   // se renueva cada 4 s
       warmed[c.url] = Date.now();
       prefetchStart(c.url);
     });
   }
   // Pre-carga del primer pedazo de video (calidad más baja): lista principal → lista de calidad → pedazo
   // donde arrancará la vista previa. Queda en la caché del navegador y al moverse la tarjeta aparece al instante.
+  // Listas internas (índices de pedazos) recién bajadas: hls.js las usa sin volver a pedirlas (hasta 3 s)
+  var plCache = {}, PL_FRESH = 5000;
+  function plPut(u, t) { plCache[u] = { t: t, at: Date.now() }; }
+  function plGet(u) { var h = plCache[u]; if (h && Date.now() - h.at < PL_FRESH) { delete plCache[u]; return h.t; } return null; }
+  var prefetchedAt = {};                          // canal → cuándo se pre-cargó su primer pedazo
+  function makePLoader() {                        // cargador de listas de hls.js que primero mira la caché
+    var Base = window.Hls && window.Hls.DefaultConfig && window.Hls.DefaultConfig.loader;
+    if (!Base) return null;
+    function PL(config) { this.inner = new Base(config); this.stats = this.inner.stats; this.context = null; }
+    PL.prototype.load = function (context, config, callbacks) {
+      var txt = context && context.url ? plGet(context.url) : null;
+      if (txt === null) { this.inner.load(context, config, callbacks); this.stats = this.inner.stats; return; }
+      var now = (window.performance && performance.now) ? performance.now() : Date.now(), len = txt.length;
+      var st = { aborted: false, loaded: len, retry: 0, total: len, chunkCount: 0, bwEstimate: 0,
+        loading: { start: now, first: now, end: now }, parsing: { start: now, end: now }, buffering: { start: 0, first: 0, end: 0 } };
+      this.stats = st; this.context = context;
+      var self = this;
+      setTimeout(function () {                      // como una respuesta de red, pero sin esperar a internet
+        if (st.aborted) return;
+        try { callbacks.onSuccess({ url: context.url, data: txt }, st, context, null); }
+        catch (e) { }
+      }, 0);
+    };
+    PL.prototype.abort = function () { if (this.stats) this.stats.aborted = true; try { this.inner.abort(); } catch (e) { } };
+    PL.prototype.destroy = function () { try { this.inner.destroy(); } catch (e) { } };
+    PL.prototype.getCacheAge = function () { return null; };
+    PL.prototype.getResponseHeader = function (n) { try { return this.inner.getResponseHeader(n); } catch (e) { return null; } };
+    return PL;
+  }
   function prefetchStart(url) {
     if (!window.fetch) return;
     var abs = function (u, base) { try { return new URL(u, base).href; } catch (e) { return u; } };
-    var get = function (u) { return fetch(u, { credentials: 'omit' }).then(function (r) { if (!r.ok) throw new Error(r.status); return r.text(); }); };
+    var get = function (u) { return fetch(u, { credentials: 'omit' }).then(function (r) { if (!r.ok) throw new Error(r.status); return r.text(); }).then(function (t) { plPut(u, t); return t; }); };
     get(url).then(function (txt) {
       if (txt.indexOf('#EXT-X-STREAM-INF') < 0) return [url, txt];     // ya es una lista de pedazos
       var lines = txt.split(/\r?\n/), best = null, bw = Infinity;
@@ -918,13 +949,14 @@
       if (!segs.length) return;
       var live = r[1].indexOf('#EXT-X-ENDLIST') < 0;
       var i = live ? Math.max(0, segs.length - 3) : 0;                // donde arranca hls.js (3 pedazos antes del final)
-      fetch(abs(segs[i], r[0]), { credentials: 'omit' }).catch(function () { });
+      fetch(abs(segs[i], r[0]), { credentials: 'omit' }).then(function () { prefetchedAt[url] = Date.now(); }).catch(function () { });
     }).catch(function () { });
   }
   function startStream(ch) {
     var video = $('video');
     if (window.Hls && window.Hls.isSupported()) {
       HLS_CONFIG.abrEwmaDefaultEstimate = savedBandwidth();
+      if (!HLS_CONFIG.pLoader) { var PLm = makePLoader(); if (PLm) HLS_CONFIG.pLoader = PLm; }
       hls = new window.Hls(HLS_CONFIG);
       allowTimeshift(hls);
       hls.loadSource(ch.url);
@@ -939,7 +971,9 @@
     }
     if (video.play) { var p = video.play(); if (p && p.catch) p.catch(function () { }); }
   }
+  var zapRapid = false;
   function zap(step) {                         // ▲▼ salta los videos de YouTube (no son canales en vivo)
+    zapRapid = true;
     var n = zapList.length, i = zapIdx;
     for (var k = 0; k < n; k++) { i = (i + step + n) % n; if (!zapList[i].yt) break; }
     if (zapList[i] && !zapList[i].yt) playChannel(zapList, i, zapGroup);
@@ -1299,13 +1333,16 @@
   function slotLoad(sl, c, side) {
     if (!sideOpen || mode !== 'full') return;
     sl.ch = c;
+    prefetchedAt[c.url] = Date.now();               // sus primeros pedazos quedan en la caché: si lo eliges, arranca al tiro
     var box = sl.box, v = sl.v;
     box.classList.add('show');
     var shown = function () { if (sl.ch === c) box.classList.add('ready'); };
     v.onplaying = shown;
     v.ontimeupdate = function () { if (v.currentTime > 0) shown(); };
     if (window.Hls && window.Hls.isSupported()) {
-      var h = sl.hls = new window.Hls(side ? PREV_HLS_SIDE : PREV_HLS);
+      var cfgP = side ? PREV_HLS_SIDE : PREV_HLS;
+      if (!cfgP.pLoader) { var PLp = makePLoader(); if (PLp) cfgP.pLoader = PLp; }
+      var h = sl.hls = new window.Hls(cfgP);
       h.loadSource(c.url);
       h.attachMedia(v);
       h.on(window.Hls.Events.MANIFEST_PARSED, function () {
