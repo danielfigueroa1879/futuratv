@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.0.7';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.0.8';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -1154,10 +1154,33 @@
   // Hasta 3 videos de vista previa (horizontal: la tarjeta del medio y sus 2 vecinas; vertical: solo 1).
   // Al moverse, un video ya cargado se reubica (no se recarga): solo carga el canal nuevo.
   var prevSlots = null, prevTimer = null;
-  // Protección: si con las vecinas en vivo la TV pierde cuadros del canal principal, se deja solo la del medio
-  var prevTriple = store('prevTriple') !== '0', prevQ = null;
+  // Protección (50 cuadros por segundo): mientras las vecinas están en vivo se mide cuántos cuadros por
+  // segundo dibuja la pantalla; si baja de 50 (o el canal principal pierde cuadros) se deja solo la del medio
+  var prevTriple = store('prevTriple') !== '0', prevQ = null, fpsWin = null, fpsRaf = 0;
+  var FPS_MIN = 50;
+  function prevFallback() {
+    prevTriple = false; store('prevTriple', '0'); fpsWin = null;
+    toast('Para mantener 50 cuadros por segundo, el carrusel muestra en vivo solo el canal del medio');
+    sidePrevSchedule();
+  }
+  function fpsTick(t) {
+    fpsRaf = 0;
+    if (!prevTriple || !LIST_H || !sideOpen || mode !== 'full' || document.hidden) { fpsWin = null; return; }
+    var on = prevSlots && prevSlots.filter(function (sl) { return sl.ch; }).length >= 2;
+    if (!on) { fpsWin = null; fpsRaf = requestAnimationFrame(fpsTick); return; }
+    if (!fpsWin) fpsWin = { t0: t, n: 0, bad: 0 };
+    fpsWin.n++;
+    if (t - fpsWin.t0 >= 2000) {                       // ventana de 2 s
+      var fps = fpsWin.n * 1000 / (t - fpsWin.t0);
+      fpsWin.bad = fps < FPS_MIN ? fpsWin.bad + 1 : 0;
+      fpsWin.t0 = t; fpsWin.n = 0;
+      if (fpsWin.bad >= 2) { prevFallback(); return; }  // 2 ventanas seguidas bajo 50 (no por un tirón suelto)
+    }
+    fpsRaf = requestAnimationFrame(fpsTick);
+  }
   function prevGuard() {
     if (!prevTriple || !LIST_H || !sideOpen || mode !== 'full') { prevQ = null; return; }
+    if (!fpsRaf) fpsRaf = requestAnimationFrame(fpsTick);
     var v = $('video'); if (!v.getVideoPlaybackQuality) return;
     var on = prevSlots && prevSlots.filter(function (sl) { return sl.ch; }).length >= 2;
     if (!on) { prevQ = null; return; }
@@ -1166,11 +1189,7 @@
     if (Date.now() - prevQ.at < 4000) return;
     var dd = q.droppedVideoFrames - prevQ.d, dt = q.totalVideoFrames - prevQ.t;
     prevQ = { d: q.droppedVideoFrames, t: q.totalVideoFrames, at: Date.now() };
-    if (dt > 30 && dd / dt > 0.15) {
-      prevTriple = false; store('prevTriple', '0');
-      toast('Para que se vea fluido, el carrusel muestra en vivo solo el canal del medio');
-      sidePrevSchedule();
-    }
+    if (dt > 30 && dd / dt > 0.15) prevFallback();
   }
   setInterval(prevGuard, 1000);
   function prevInit() {
