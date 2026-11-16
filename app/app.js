@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.1.2';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.1.3';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -1063,7 +1063,7 @@
   }
   function bumpSide() {
     clearTimeout(sideTimer);
-    sideTimer = setTimeout(function () { if (!menuOpen) closeSide(); }, 10000);
+    sideTimer = setTimeout(function () { if (!menuOpen) closeSide(); }, 30000);   // se cierra solo tras 30 s sin tocar el control
   }
   function renderSide(selectNow) {
     sideList = listFor(sideGroup);
