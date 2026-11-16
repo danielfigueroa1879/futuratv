@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.0.6';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.0.7';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -1144,59 +1144,130 @@
 
   // ---------- TV: vista previa en vivo (solo imagen) del canal elegido en la lista lateral ----------
   // Un solo video chico y sin sonido; se carga cuando te detienes medio segundo sobre un canal.
-  var prevHls = null, prevTimer = null, prevCh = null;
   var PREV_HLS = { enableWorker: true, startLevel: 0, testBandwidth: false, abrEwmaDefaultEstimate: 300000,
     capLevelToPlayerSize: true, maxBufferLength: 6, maxMaxBufferLength: 10, maxBufferSize: 4 * 1000 * 1000, backBufferLength: 0,
     manifestLoadingTimeOut: 8000, levelLoadingTimeOut: 8000, fragLoadingTimeOut: 10000 };
+  // vecinas: aún más livianas (calidad mínima y búfer mínimo)
+  var PREV_HLS_SIDE = { enableWorker: true, startLevel: 0, testBandwidth: false, abrEwmaDefaultEstimate: 150000,
+    capLevelToPlayerSize: true, maxBufferLength: 4, maxMaxBufferLength: 6, maxBufferSize: 2 * 1000 * 1000, backBufferLength: 0,
+    manifestLoadingTimeOut: 8000, levelLoadingTimeOut: 8000, fragLoadingTimeOut: 10000 };
+  // Hasta 3 videos de vista previa (horizontal: la tarjeta del medio y sus 2 vecinas; vertical: solo 1).
+  // Al moverse, un video ya cargado se reubica (no se recarga): solo carga el canal nuevo.
+  var prevSlots = null, prevTimer = null;
+  // Protección: si con las vecinas en vivo la TV pierde cuadros del canal principal, se deja solo la del medio
+  var prevTriple = store('prevTriple') !== '0', prevQ = null;
+  function prevGuard() {
+    if (!prevTriple || !LIST_H || !sideOpen || mode !== 'full') { prevQ = null; return; }
+    var v = $('video'); if (!v.getVideoPlaybackQuality) return;
+    var on = prevSlots && prevSlots.filter(function (sl) { return sl.ch; }).length >= 2;
+    if (!on) { prevQ = null; return; }
+    var q = v.getVideoPlaybackQuality();
+    if (!prevQ) { prevQ = { d: q.droppedVideoFrames, t: q.totalVideoFrames, at: Date.now() }; return; }
+    if (Date.now() - prevQ.at < 4000) return;
+    var dd = q.droppedVideoFrames - prevQ.d, dt = q.totalVideoFrames - prevQ.t;
+    prevQ = { d: q.droppedVideoFrames, t: q.totalVideoFrames, at: Date.now() };
+    if (dt > 30 && dd / dt > 0.15) {
+      prevTriple = false; store('prevTriple', '0');
+      toast('Para que se vea fluido, el carrusel muestra en vivo solo el canal del medio');
+      sidePrevSchedule();
+    }
+  }
+  setInterval(prevGuard, 1000);
+  function prevInit() {
+    if (prevSlots) return prevSlots;
+    var first = $('sidePrev');
+    prevSlots = [first, first.cloneNode(true), first.cloneNode(true)].map(function (box, i) {
+      if (i) { box.id = ''; first.parentNode.insertBefore(box, first.nextSibling); }
+      return { box: box, v: box.querySelector('video'), hls: null, ch: null };
+    });
+    return prevSlots;
+  }
+  function slotStop(sl) {
+    sl.ch = null;
+    sl.box.classList.remove('show', 'ready', 'fail', 'on', 'side');
+    if (sl.hls) { try { sl.hls.destroy(); } catch (e) { } sl.hls = null; }
+    sl.v.removeAttribute('src'); try { sl.v.load(); } catch (e) { }
+  }
   function sidePrevStop() {
-    clearTimeout(prevTimer); prevCh = null;
-    var box = $('sidePrev'); if (!box) return;
-    box.classList.remove('show', 'ready', 'fail');
+    clearTimeout(prevTimer);
+    if (prevSlots) prevSlots.forEach(slotStop);
     $('player').classList.remove('has-prev');
-    var v = box.querySelector('video');
-    if (prevHls) { try { prevHls.destroy(); } catch (e) { } prevHls = null; }
-    v.removeAttribute('src'); try { v.load(); } catch (e) { }
+  }
+  function slotPlace(sl, el, side) {               // coloca el recuadro sobre la tarjeta / fila; false si aún no tiene tamaño
+    var P = $('player').getBoundingClientRect(), b = sl.box, r;
+    if (LIST_H) {
+      r = el.getBoundingClientRect(); if (r.width < 20) return false;
+      b.style.left = (r.left - P.left) + 'px'; b.style.top = (r.top - P.top) + 'px';
+      b.style.width = r.width + 'px'; b.style.height = r.height + 'px';
+      b.querySelector('.sp-lab').innerHTML = el.querySelector('.hlab').innerHTML;   // el nombre va sobre la imagen
+    } else {
+      r = el.getBoundingClientRect(); if (r.height < 10) return false;
+      var S = $('side').getBoundingClientRect();
+      b.style.width = '128px'; b.style.height = '72px';
+      b.style.left = (S.right - P.left - 78 - 128) + 'px'; b.style.top = (r.top - P.top + (r.height - 72) / 2) + 'px';
+    }
+    b.classList.add('on'); b.classList.toggle('side', !!side);
+    return true;
   }
   function sidePrevSchedule() {
     if (sideOpen) warmChannel(sideList[sideIdx]);
     if (IS_PHONE) return;
-    var c = sideList[sideIdx];
-    if (c !== prevCh) sidePrevStop();
-    if (!sideOpen || mode !== 'full' || !c || c.isCountry || c.yt || c === nowCh) return;   // el que ya ves no necesita vista previa
-    var box = $('sidePrev'), r, P = $('player').getBoundingClientRect();
-    if (LIST_H) {                                  // horizontal: cubre la imagen de la tarjeta elegida
-      var card = $('hbTrack').querySelector('.hcard.sel'); if (!card) return;
-      r = card.getBoundingClientRect(); if (r.width < 20) return;   // aún sin tamaño: no mostrar nada en la esquina
-      box.querySelector('.sp-lab').innerHTML = card.querySelector('.hlab').innerHTML;   // el nombre va sobre la imagen en vivo
-      box.style.left = (r.left - P.left) + 'px'; box.style.top = (r.top - P.top) + 'px';
-      box.style.width = r.width + 'px'; box.style.height = r.height + 'px';
-    } else {                                       // vertical: recuadro chico entre el nombre y la estrella
-      var row = $('sideList').querySelector('.srow.sel'); if (!row) return;
-      r = row.getBoundingClientRect(); var S = $('side').getBoundingClientRect(); if (r.height < 10) return;
-      box.style.width = '128px'; box.style.height = '72px';
-      box.style.left = (S.right - P.left - 78 - 128) + 'px'; box.style.top = (r.top - P.top + (r.height - 72) / 2) + 'px';
+    var slots = prevInit();
+    clearTimeout(prevTimer);
+    if (!sideOpen || mode !== 'full') { sidePrevStop(); return; }
+    var want = [];                                 // [elemento, canal, esVecina]
+    if (LIST_H) {
+      Array.prototype.forEach.call($('hbTrack').querySelectorAll('.hcard[data-s]'), function (el) {
+        var i = +el.getAttribute('data-s'), k = i - sideIdx;
+        if (k === 0 || (prevTriple && (k === -1 || k === 1))) want.push([el, sideList[i], k !== 0]);
+      });
+    } else {
+      var row = $('sideList').querySelector('.srow.sel');
+      if (row) want.push([row, sideList[sideIdx], false]);
     }
-    $('player').classList.add('has-prev');
-    if (c === prevCh) return;
-    prevTimer = setTimeout(function () { sidePrevLoad(c); }, 500);
+    want = want.filter(function (w) { return w[1] && !w[1].isCountry && !w[1].yt && w[1] !== nowCh; });   // el que ya ves no se repite
+    var used = [];
+    want.forEach(function (w) {                    // 1) reutiliza el video que ya muestra ese canal
+      for (var j = 0; j < slots.length; j++) if (used.indexOf(j) < 0 && slots[j].ch === w[1]) {
+        used.push(j); w.slot = slots[j];
+        if (!slotPlace(w.slot, w[0], w[2])) slotStop(w.slot);
+        return;
+      }
+    });
+    slots.forEach(function (sl, j) { if (used.indexOf(j) < 0 && sl.ch) slotStop(sl); });   // 2) apaga los que sobran
+    var pending = want.filter(function (w) { return !w.slot; });
+    pending = pending.filter(function (w) {         // 3) los nuevos: recuadro con rueda, carga al detenerse
+      for (var j = 0; j < slots.length; j++) if (used.indexOf(j) < 0) {
+        used.push(j); w.slot = slots[j]; slotStop(w.slot);
+        return slotPlace(w.slot, w[0], w[2]);
+      }
+      return false;
+    });
+    $('player').classList.toggle('has-prev', want.length > 0);
+    if (!pending.length) return;
+    prevTimer = setTimeout(function () {
+      pending.forEach(function (w, n) {             // primero el del medio; las vecinas un poco después
+        setTimeout(function () { if (w.slot && !w.slot.ch && w.slot.box.classList.contains('on')) slotLoad(w.slot, w[1], w[2]); }, w[2] ? 700 + n * 300 : 0);
+      });
+    }, 500);
   }
-  function sidePrevLoad(c) {
-    if (!sideOpen || mode !== 'full' || sideList[sideIdx] !== c) return;
-    prevCh = c;
-    var box = $('sidePrev'), v = box.querySelector('video');
+  function slotLoad(sl, c, side) {
+    if (!sideOpen || mode !== 'full') return;
+    sl.ch = c;
+    var box = sl.box, v = sl.v;
     box.classList.add('show');
-    var shown = function () { if (prevCh === c) box.classList.add('ready'); };
+    var shown = function () { if (sl.ch === c) box.classList.add('ready'); };
     v.onplaying = shown;
     v.ontimeupdate = function () { if (v.currentTime > 0) shown(); };
     if (window.Hls && window.Hls.isSupported()) {
-      prevHls = new window.Hls(PREV_HLS);
-      prevHls.loadSource(c.url);
-      prevHls.attachMedia(v);
-      prevHls.on(window.Hls.Events.MANIFEST_PARSED, function () {
-        try { prevHls.autoLevelCapping = 0; } catch (e) { }
+      var h = sl.hls = new window.Hls(side ? PREV_HLS_SIDE : PREV_HLS);
+      h.loadSource(c.url);
+      h.attachMedia(v);
+      h.on(window.Hls.Events.MANIFEST_PARSED, function () {
+        try { h.autoLevelCapping = 0; h.nextLevel = 0; } catch (e) { }       // siempre la calidad más baja
         var p = v.play(); if (p && p.catch) p.catch(function () { });
       });
-      prevHls.on(window.Hls.Events.ERROR, function (_, d) { if (d.fatal && prevCh === c) { box.classList.add('fail'); } });
+      h.on(window.Hls.Events.ERROR, function (_, d) { if (d.fatal && sl.ch === c) box.classList.add('fail'); });
     } else {
       v.src = c.url; var p = v.play(); if (p && p.catch) p.catch(function () { });
     }
@@ -1339,6 +1410,7 @@
     if (el.id === 'resetM3u') { store('m3u', DEFAULT_M3U); $('m3uInput').value = DEFAULT_M3U; channels = []; toast('Lista restablecida'); return; }
     if (el.id === 'listMode') {
       LIST_H = !LIST_H; store('listMode', LIST_H ? 'h' : 'v'); updateListModeBtn();
+      prevTriple = true; store('prevTriple', '1');      // vuelve a intentar las vecinas en vivo
       toast(LIST_H ? 'Lista horizontal (carrusel) con controles de tiempo' : 'Lista vertical (lateral)');
       return;
     }

@@ -676,7 +676,7 @@ html:not(.phone) .wt-in video { transition: none; }
 }
 .side-prev.ready::before, .side-prev.fail::before { display: none; }
 .side-prev.fail::after { content: 'Sin señal'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 15px; color: #9aa6c2; }
-#player.has-prev .side-prev { display: block; }
+.side-prev.on { display: block; }
 #player.has-prev .srow.sel .nm { margin-right: 150px; }
 .phone .side-prev { display: none !important; }
 
@@ -771,3 +771,29 @@ html:not(.phone) .field input:focus { border-color: #22d3ee; box-shadow: 0 0 0 4
 .link-qr .hint { max-width: 1100px; }
 .phone .link-qr { flex-direction: column; align-items: flex-start; gap: 10px; margin: 0 0 14px; }
 .phone .link-qr .qr { width: 160px; height: 160px; }
+
+/* ---- Carrusel: costados más chicos; vecinas en vivo (calidad mínima) ---- */
+.hcard { width: 250px; height: 141px; }
+.hcard .hlab b { font-size: 19px; }
+.hcard.sel { width: 440px; height: 248px; }
+.hcard.sel .hlab b { font-size: 26px; }
+#player.list-h .side-prev.side { box-shadow: 0 0 0 1px rgba(255,255,255,.35); }
+#player.list-h .side-prev.side.ready::before {      /* vecinas: video sólido con una sombra suave encima */
+  display: block; content: ''; left: 0; top: 0; right: 0; bottom: 0; width: auto; height: auto; margin: 0;
+  border: 0; border-radius: 0; animation: none; background: rgba(8,11,20,.28);
+}
+#player.list-h .side-prev.side .sp-lab b { font-size: 19px; }
+
+/* ---- Lista vertical con el mismo estilo de vidrio e iluminación ---- */
+html:not(.phone) .side {
+  background: linear-gradient(90deg, rgba(22,30,60,.78), rgba(22,30,60,.52));
+  box-shadow: inset -1px 0 0 rgba(255,255,255,.22), inset 0 1px 0 rgba(255,255,255,.12);
+}
+html:not(.phone) .srow { margin: 2px 14px; padding: 0 16px; border-left: 0; border-radius: 14px; }
+html:not(.phone) .srow.sel {
+  background: linear-gradient(140deg, rgba(255,255,255,.22), rgba(255,255,255,.08) 55%, rgba(255,255,255,.14));
+  color: #fff; border-left: 0;
+  box-shadow: 0 0 0 2px #fff, 0 0 22px rgba(255,255,255,.45), inset 0 1px 0 rgba(255,255,255,.5);
+}
+html:not(.phone) .srow.sel.now { color: #ffb3c0; }
+#player:not(.list-h) .side-prev { box-shadow: 0 0 0 2px #fff, 0 0 16px rgba(255,255,255,.45); border-radius: 8px; }
