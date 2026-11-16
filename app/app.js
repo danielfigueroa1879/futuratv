@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.0.1';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.0.2';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -175,6 +175,7 @@
     if (!el) return;
     if (focused) focused.classList.remove('focused');
     focused = el; el.classList.add('focused');
+    if (el.hasAttribute('data-ch')) warmChannel(filtered[+el.getAttribute('data-ch')]);
     if (el.tagName === 'INPUT') el.focus(); else if (document.activeElement && document.activeElement.tagName === 'INPUT') document.activeElement.blur();
     if (el.classList.contains('ch')) scrollGridTo(el);
     else if (el.scrollIntoView && !el.classList.contains('key')) el.scrollIntoView({ block: 'nearest' });
@@ -740,11 +741,31 @@
     // TV: guarda hasta 10 min de lo ya visto para poder retroceder aunque el canal guarde menos
     // (si la memoria no alcanza, el navegador descarta lo más antiguo solo)
     backBufferLength: IS_PHONE ? 90 : 600,
-    manifestLoadingTimeOut: 10000, levelLoadingTimeOut: 10000, fragLoadingTimeOut: 15000
+    manifestLoadingTimeOut: 10000, levelLoadingTimeOut: 10000, fragLoadingTimeOut: 15000,
+    // apertura rápida: sin prueba de velocidad (se usa la medida guardada) y primer pedazo pedido en paralelo
+    testBandwidth: false, startFragPrefetch: true
   };
+  // Velocidad de internet medida en canales anteriores: el próximo canal parte directo en la calidad correcta
+  function savedBandwidth() { var b = +(store('bwEst') || 0); return b > 100000 ? b : 2500000; }
+  function rememberBandwidth(h) {
+    try { var b = h && h.bandwidthEstimate; if (b && isFinite(b) && b > 100000) store('bwEst', String(Math.round(b))); } catch (e) { }
+  }
+  // Pre-conexión: al detenerse sobre un canal se abre la conexión con su servidor (al apretar OK ya está lista)
+  var warmTimer = null, warmed = {};
+  function warmChannel(c) {
+    clearTimeout(warmTimer);
+    if (!c || !c.url || c.isCountry || (nowCh && c === nowCh)) return;
+    warmTimer = setTimeout(function () {
+      var host = (c.url.match(/^https?:\/\/[^\/]+/) || [])[0];
+      if (!host || warmed[c.url] > Date.now() - 20000) return;
+      warmed[c.url] = Date.now();
+      try { if (window.fetch) fetch(c.url, { credentials: 'omit', cache: 'no-store' }).catch(function () { }); } catch (e) { }
+    }, 350);
+  }
   function startStream(ch) {
     var video = $('video');
     if (window.Hls && window.Hls.isSupported()) {
+      HLS_CONFIG.abrEwmaDefaultEstimate = savedBandwidth();
       hls = new window.Hls(HLS_CONFIG);
       allowTimeshift(hls);
       hls.loadSource(ch.url);
@@ -805,7 +826,7 @@
   function stopVideo() {
     var video = $('video');
     video.classList.remove('ready');
-    if (hls) { hls.destroy(); hls = null; }
+    if (hls) { rememberBandwidth(hls); hls.destroy(); hls = null; }
     video.removeAttribute('src'); if (video.load) video.load();
   }
   function showOsd() {
@@ -1006,6 +1027,7 @@
     v.removeAttribute('src'); try { v.load(); } catch (e) { }
   }
   function sidePrevSchedule() {
+    if (sideOpen) warmChannel(sideList[sideIdx]);
     if (IS_PHONE) return;
     var c = sideList[sideIdx];
     if (c !== prevCh) sidePrevStop();
