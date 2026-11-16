@@ -37,6 +37,15 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.io.OutputStream;
+import java.net.Inet4Address;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.NetworkInterface;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.net.URLDecoder;
+import java.util.Collections;
 
 /**
  * Contenedor Android TV de FuturaTV: muestra la interfaz web y abre otras apps.
@@ -475,9 +484,139 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         stopVoice();
+        stopLinkServer();
         web.destroy();
         super.onDestroy();
     }
+
+    // ---------- Enviar enlaces desde el celular: mini página web en la red local ----------
+    private ServerSocket linkServer;
+    private String linkToken = "";
+
+    private static String localIp() {
+        String any = null;
+        try {
+            for (NetworkInterface ni : Collections.list(NetworkInterface.getNetworkInterfaces())) {
+                if (!ni.isUp() || ni.isLoopback()) continue;
+                for (InetAddress a : Collections.list(ni.getInetAddresses())) {
+                    if (!(a instanceof Inet4Address)) continue;
+                    if (a.isSiteLocalAddress()) return a.getHostAddress();       // 192.168.x / 10.x / 172.16-31.x
+                    if (any == null && !a.isLinkLocalAddress()) any = a.getHostAddress();
+                }
+            }
+        } catch (Exception ignored) { }
+        return any;
+    }
+
+    private synchronized String startLinkServer() {
+        String ip = localIp();
+        if (ip == null) return "";
+        if (linkServer != null && !linkServer.isClosed()) return "http://" + ip + ":" + linkServer.getLocalPort() + "/?k=" + linkToken;
+        linkToken = Long.toString(System.nanoTime() & 0xffffff, 36);
+        for (int port = 8765; port < 8775; port++) {
+            try {
+                ServerSocket ss = new ServerSocket();
+                ss.setReuseAddress(true);
+                ss.bind(new InetSocketAddress(port));
+                linkServer = ss;
+                new Thread(() -> serveLinks(ss)).start();
+                web.postDelayed(this::stopLinkServer, 15 * 60 * 1000);   // se apaga sola a los 15 min
+                return "http://" + ip + ":" + port + "/?k=" + linkToken;
+            } catch (Exception ignored) { }
+        }
+        return "";
+    }
+
+    private synchronized void stopLinkServer() {
+        try { if (linkServer != null) linkServer.close(); } catch (Exception ignored) { }
+        linkServer = null;
+    }
+
+    private void serveLinks(ServerSocket ss) {
+        while (!ss.isClosed()) {
+            try {
+                final Socket s = ss.accept();
+                new Thread(() -> handleLink(s)).start();
+            } catch (Exception e) { return; }
+        }
+    }
+
+    private static String readLine(InputStream in) throws Exception {
+        StringBuilder sb = new StringBuilder();
+        int c;
+        while ((c = in.read()) != -1 && c != '\n') if (c != '\r') sb.append((char) c);
+        return sb.toString();
+    }
+
+    private void handleLink(Socket s) {
+        try {
+            s.setSoTimeout(10000);
+            InputStream in = s.getInputStream();
+            String first = readLine(in);
+            int len = 0;
+            String h;
+            while (!(h = readLine(in)).isEmpty()) {
+                if (h.toLowerCase().startsWith("content-length:")) len = Integer.parseInt(h.substring(15).trim());
+            }
+            String[] parts = first.split(" ");
+            String path = parts.length > 1 ? parts[1] : "/";
+            String body = "";
+            if (len > 0 && len < 8192) {
+                byte[] buf = new byte[len];
+                int off = 0, n;
+                while (off < len && (n = in.read(buf, off, len - off)) > 0) off += n;
+                body = new String(buf, 0, off, "UTF-8");
+            }
+            String resp;
+            String type = "text/html; charset=utf-8";
+            if (first.startsWith("POST") && path.startsWith("/add")) {
+                String k = "", u = "";
+                for (String kv : body.split("&")) {
+                    int i = kv.indexOf('=');
+                    if (i < 0) continue;
+                    String key = kv.substring(0, i), val = URLDecoder.decode(kv.substring(i + 1), "UTF-8");
+                    if (key.equals("k")) k = val; else if (key.equals("u")) u = val;
+                }
+                if (!k.equals(linkToken)) resp = "Código vencido: escanea el QR de nuevo en la TV.";
+                else if (u.trim().isEmpty()) resp = "Falta el enlace.";
+                else {
+                    final String link = u.trim();
+                    runOnUiThread(() -> web.evaluateJavascript("window.mitvRemoteLink && window.mitvRemoteLink(" + JSONObject.quote(link) + ")", null));
+                    resp = "OK";
+                }
+                type = "text/plain; charset=utf-8";
+            } else {
+                resp = LINK_PAGE;
+            }
+            byte[] out = resp.getBytes("UTF-8");
+            OutputStream os = s.getOutputStream();
+            os.write(("HTTP/1.1 200 OK\r\nContent-Type: " + type + "\r\nContent-Length: " + out.length
+                    + "\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n").getBytes("UTF-8"));
+            os.write(out);
+            os.flush();
+        } catch (Exception ignored) {
+        } finally {
+            try { s.close(); } catch (Exception ignored) { }
+        }
+    }
+
+    private static final String LINK_PAGE = "<!doctype html><html lang=es><head><meta charset=utf-8>"
+            + "<meta name=viewport content='width=device-width,initial-scale=1'><title>FuturaTV · enviar enlace</title>"
+            + "<style>body{margin:0;font-family:system-ui,sans-serif;background:#081033;color:#e8ecf5;padding:24px}"
+            + "h1{font-size:22px;margin:0 0 6px}p{color:#9aa6c2;margin:0 0 18px;font-size:15px}"
+            + "textarea{width:100%;box-sizing:border-box;height:110px;font-size:17px;padding:14px;border-radius:14px;"
+            + "border:2px solid #2a3558;background:#121931;color:#fff}button{margin-top:14px;width:100%;padding:16px;"
+            + "font-size:18px;font-weight:700;border:0;border-radius:14px;background:#8b5cf6;color:#fff}"
+            + "#m{margin-top:16px;font-size:16px;min-height:22px}</style></head><body>"
+            + "<h1>📺 FuturaTV</h1><p>Pega el enlace de YouTube y envíalo a la TV. Queda en ★ Favoritos.</p>"
+            + "<textarea id=u placeholder='https://youtu.be/...'></textarea><button id=b>Enviar a la TV</button><div id=m></div>"
+            + "<script>var k=new URLSearchParams(location.search).get('k')||'';"
+            + "document.getElementById('b').onclick=function(){var u=document.getElementById('u').value.trim(),m=document.getElementById('m');"
+            + "if(!u){m.textContent='Pega un enlace primero';return;}m.textContent='Enviando…';"
+            + "fetch('/add',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},"
+            + "body:'k='+encodeURIComponent(k)+'&u='+encodeURIComponent(u)}).then(function(r){return r.text()})"
+            + ".then(function(t){if(t==='OK'){m.textContent='✅ Enviado: míralo en la TV';document.getElementById('u').value='';}else m.textContent=t;})"
+            + ".catch(function(){m.textContent='No se pudo conectar con la TV (¿mismo Wi-Fi?)';});};</script></body></html>";
 
     /** Funciones disponibles en JavaScript como window.Android */
     private class Bridge {
@@ -543,8 +682,20 @@ public class MainActivity extends Activity {
         public void setPlaying(boolean playing) { videoPlaying = playing; }
 
         @JavascriptInterface
-        public void exit() {
-            runOnUiThread(MainActivity.this::finish);
+        public void exit() {                          // cierra por completo: sin quedar en segundo plano
+            runOnUiThread(() -> {
+                stopLinkServer();
+                try { web.stopLoading(); web.loadUrl("about:blank"); } catch (Exception ignored) { }
+                if (Build.VERSION.SDK_INT >= 21) finishAndRemoveTask(); else finish();
+                web.postDelayed(() -> android.os.Process.killProcess(android.os.Process.myPid()), 400);
+            });
         }
+
+        /** Enciende la página para enviar enlaces desde el celular (misma red Wi-Fi). Devuelve su dirección o "". */
+        @JavascriptInterface
+        public String startLinkServer() { return MainActivity.this.startLinkServer(); }
+
+        @JavascriptInterface
+        public void stopLinkServer() { MainActivity.this.stopLinkServer(); }
     }
 }

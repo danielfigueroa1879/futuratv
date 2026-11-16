@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.0.5';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.0.6';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -183,8 +183,35 @@
     var n = ytLoad().length;
     if ($('ytInfo')) $('ytInfo').textContent = n ? n + ' video' + (n > 1 ? 's' : '') + ' de YouTube en Favoritos · para quitar uno: mantén OK sobre él → Quitar de favoritos' : '';
   }
-  // Cerrar la app
+  // Enviar el enlace desde el celular: la TV muestra un QR con una página de su red Wi-Fi
+  function showLinkQr() {
+    if (!IS_ANDROID || typeof window.Android.startLinkServer !== 'function') {
+      toast('Para esto instala la nueva APK de FuturaTV (2.0.6 o más nueva)'); return;
+    }
+    var url = '';
+    try { url = window.Android.startLinkServer(); } catch (e) { url = ''; }
+    if (!url) { toast('La TV no está conectada a una red Wi-Fi o cable de la casa'); return; }
+    var draw = function () {
+      try {
+        var q = window.qrcode(0, 'M'); q.addData(url); q.make();
+        $('linkQr').innerHTML = q.createSvgTag({ cellSize: 6, margin: 2, scalable: true });
+      } catch (e) { $('linkQr').innerHTML = ''; }
+      $('linkTxt').innerHTML = 'Escanea con la cámara del celular (conectado al <b>mismo Wi-Fi</b>), pega el enlace y toca «Enviar a la TV».<br>O abre en el celular: <b>' + escapeHtml(url) + '</b>';
+      $('linkBox').classList.remove('hidden');
+      if (focused) setFocus(focused);
+      try { $('linkBox').scrollIntoView({ block: 'end' }); } catch (e) { }   // que el QR se vea completo
+    };
+    if (window.qrcode) draw();
+    else { var sc = document.createElement('script'); sc.src = 'lib/qrcode.js'; sc.onload = draw; sc.onerror = draw; document.body.appendChild(sc); }
+  }
+  window.mitvRemoteLink = function (u) {               // llega un enlace enviado desde el celular
+    if (!ytId(u)) { toast('Llegó un enlace que no es de YouTube: ' + String(u).slice(0, 60)); return; }
+    $('ytInput').value = u; ytAdd();
+  };
+  // Cerrar la app por completo (detiene videos y libera memoria; las listas guardadas se mantienen)
   function exitApp() {
+    try { stopPlayer(); } catch (e) { }
+    try { wallTeardown(); sidePrevStop(); } catch (e) { }
     if (IS_ANDROID) { try { window.Android.exit(); return; } catch (e) { } }
     if (window.webOS && window.webOS.platformBack) { try { window.close(); } catch (e) { } window.webOS.platformBack(); return; }
     try { window.close(); } catch (e) { }
@@ -1279,6 +1306,7 @@
     if (el.id === 'pipMoveBtn') { cyclePip(); return; }
     if (el.id === 'exitBtn') { exitApp(); return; }
     if (el.id === 'ytAdd') { ytAdd(); return; }
+    if (el.id === 'linkPhone') { showLinkQr(); return; }
     if (el.id === 'wallToggle') { wallToggle(); return; }
     if (el.classList.contains('wt')) { wallActivate(el); return; }
     if (el.id === 'searchBtn') { if (searchOpen) closeSearch(false); else openSearch(); return; }

@@ -763,3 +763,11 @@ html:not(.phone) .channels .ch { content-visibility: auto; contain-intrinsic-siz
 /* TV: cuadro de texto marcado (sin teclado) y en edición (con teclado) */
 html:not(.phone) .field input.focused { border-color: #8b5cf6; box-shadow: 0 0 0 4px rgba(139,92,246,.35); outline: 0 !important; }
 html:not(.phone) .field input:focus { border-color: #22d3ee; box-shadow: 0 0 0 4px rgba(34,211,238,.4); background: #17204a; outline: 0; }
+.tab.exit-btn { display: inline-flex; align-items: center; gap: 10px; }
+.tab.exit-btn .ico { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; }
+.link-qr { display: flex; align-items: center; gap: 30px; margin: -10px 0 30px; }
+.link-qr .qr { width: 230px; height: 230px; padding: 10px; background: #fff; border-radius: 14px; flex: none; }
+.link-qr .qr svg { width: 100%; height: 100%; display: block; }
+.link-qr .hint { max-width: 1100px; }
+.phone .link-qr { flex-direction: column; align-items: flex-start; gap: 10px; margin: 0 0 14px; }
+.phone .link-qr .qr { width: 160px; height: 160px; }
