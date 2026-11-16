@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.0.0';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.0.1';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -309,6 +309,10 @@
   function cachedGet(url, maxAgeMs) {
     var key = 'cache:' + url, cached = store(key), at = +(store(key + ':at') || 0);
     if (cached && Date.now() - at < maxAgeMs) return Promise.resolve(cached);
+    if (cached) {                     // vencida: se abre al instante con la copia guardada y se renueva por detrás
+      getText(url).then(function (t) { if (parseM3U(t).length) { store(key, t); store(key + ':at', String(Date.now())); } }).catch(function () { });
+      return Promise.resolve(cached);
+    }
     return getText(url).then(function (t) {
       if (parseM3U(t).length) { store(key, t); store(key + ':at', String(Date.now())); }
       return t;
@@ -356,6 +360,8 @@
       if (!channels.length) throw new Error('las listas están vacías');
       activeGroup = listFor(FAV_GROUP).length ? FAV_GROUP : 'Todos';
       refreshChannels();
+      if (window.mitvReadyFast) window.mitvReadyFast();
+      autoStartFavorite();
       if (!lists[1].length) $('liveStatus').textContent += ' (no se pudo cargar la lista extra de Ajustes)';
       loadingChannels = false;
     }).catch(function (e) {
@@ -1907,6 +1913,16 @@
     });
   }, 1500);
 
+  // TV: al abrir la app se pone el primer favorito en la ventana chica (PiP)
+  var autoStarted = false;
+  function autoStartFavorite() {
+    if (autoStarted || IS_PHONE) return;
+    autoStarted = true;
+    var favList = listFor(FAV_GROUP);
+    if (!favList.length || mode !== 'none') return;
+    playChannel(favList, 0, FAV_GROUP, 'pip');
+  }
+
   // ---------- Inicio ----------
   var splashStart = Date.now();
   function hideSplash() {
@@ -1916,6 +1932,7 @@
     setTimeout(function () { if (sp.parentNode) sp.parentNode.removeChild(sp); }, 600);
   }
   window.addEventListener('load', function () { setTimeout(hideSplash, Math.max(0, 1500 - (Date.now() - splashStart))); });
+  window.mitvReadyFast = function () { setTimeout(hideSplash, Math.max(0, 500 - (Date.now() - splashStart))); };   // canales listos: fuera el logo
   setTimeout(hideSplash, 4000);
 
   renderApps();
