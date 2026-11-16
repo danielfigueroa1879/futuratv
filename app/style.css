@@ -758,3 +758,5 @@ html:not(.phone) .wt-in video { transition: none; }
 
 /* TV: la grilla solo dibuja los canales que están en pantalla (navegar «Todos» más rápido) */
 html:not(.phone) .channels .ch { content-visibility: auto; contain-intrinsic-size: auto 170px; }
+.tab.exit-btn { color: #fca5a5; }
+.tab.exit-btn.focused { color: #b91c1c; }

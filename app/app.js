@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.0.3';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.0.4';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -123,6 +123,72 @@
         toast('"' + app.name + '" no está instalada en este TV');
       }
     });
+  }
+
+  // ---------- Videos de YouTube como favoritos (se abren en la app de YouTube) ----------
+  function ytId(u) {
+    u = String(u || '').trim();
+    var m = u.match(/(?:youtu\.be\/|[?&]v=|\/(?:shorts|live|embed|v)\/)([A-Za-z0-9_-]{11})/) || u.match(/^([A-Za-z0-9_-]{11})$/);
+    return m ? m[1] : null;
+  }
+  function ytLoad() { try { return JSON.parse(store('ytFavs') || '[]') || []; } catch (e) { return []; } }
+  function ytChannel(o) {
+    return { name: o.title || 'Video de YouTube', url: 'https://www.youtube.com/watch?v=' + o.id, yt: o.id, group: 'YouTube',
+      logo: 'https://i.ytimg.com/vi/' + o.id + '/hqdefault.jpg' };
+  }
+  function ytMergeInto(list) {                    // agrega los videos guardados a la lista de canales (y a favoritos)
+    ytLoad().forEach(function (o) {
+      var c = ytChannel(o);
+      if (!list.some(function (x) { return x.yt === o.id; })) list.push(c);
+      favs[chKey(c)] = 1;
+    });
+  }
+  function openYouTube(c) {
+    var url = 'https://www.youtube.com/watch?v=' + c.yt;
+    if (IS_ANDROID) {
+      var ok = false;
+      try { ok = window.Android.openUrl(url); } catch (e) { ok = false; }
+      if (!ok) { try { ok = window.Android.openUrl('vnd.youtube:' + c.yt); } catch (e) { } }
+      toast(ok ? '▶ Abriendo en YouTube: ' + c.name : 'No se pudo abrir YouTube en este equipo');
+      return;
+    }
+    lunaCall('luna://com.webos.applicationManager/launch', { id: 'youtube.leanback.v4', params: { contentTarget: 'https://www.youtube.com/tv?v=' + c.yt } }, function (res) {
+      if (res.notWebOS) window.open(url, '_blank');
+      else if (!res.returnValue) toast('No se pudo abrir YouTube en este TV');
+    });
+  }
+  function ytAdd() {
+    var raw = $('ytInput').value, id = ytId(raw);
+    if (!id) { toast('Ese enlace no parece de un video de YouTube'); return; }
+    var all = ytLoad();
+    if (all.some(function (o) { return o.id === id; })) { toast('Ese video ya está en tus favoritos'); return; }
+    toast('Agregando video…');
+    var done = function (title) {
+      var o = { id: id, title: (title || 'Video de YouTube').slice(0, 80) };
+      all.push(o); store('ytFavs', JSON.stringify(all));
+      var c = ytChannel(o); channels.push(c); favs[chKey(c)] = 1; saveSet('favs', favs);
+      $('ytInput').value = ''; refreshChannels(); ytInfo();
+      toast('★ Agregado a favoritos: ' + o.title);
+    };
+    getText('https://www.youtube.com/oembed?format=json&url=' + encodeURIComponent('https://www.youtube.com/watch?v=' + id))
+      .then(function (t) { var j = {}; try { j = JSON.parse(t); } catch (e) { } done(j.title); })
+      .catch(function () { done(null); });
+  }
+  function ytRemove(c) {
+    store('ytFavs', JSON.stringify(ytLoad().filter(function (o) { return o.id !== c.yt; })));
+    channels = channels.filter(function (x) { return x !== c; });
+    ytInfo();
+  }
+  function ytInfo() {
+    var n = ytLoad().length;
+    if ($('ytInfo')) $('ytInfo').textContent = n ? n + ' video' + (n > 1 ? 's' : '') + ' de YouTube en Favoritos · para quitar uno: mantén OK sobre él → Quitar de favoritos' : '';
+  }
+  // Cerrar la app
+  function exitApp() {
+    if (IS_ANDROID) { try { window.Android.exit(); return; } catch (e) { } }
+    if (window.webOS && window.webOS.platformBack) { try { window.close(); } catch (e) { } window.webOS.platformBack(); return; }
+    try { window.close(); } catch (e) { }
+    toast('Cierra la pestaña del navegador para salir');
   }
 
   // ---------- Navegación con control remoto ----------
@@ -359,6 +425,7 @@
         channels.push(c);
       });
       if (!channels.length) throw new Error('las listas están vacías');
+      ytMergeInto(channels);
       activeGroup = listFor(FAV_GROUP).length ? FAV_GROUP : 'Todos';
       refreshChannels();
       if (window.mitvReadyFast) window.mitvReadyFast();
@@ -412,7 +479,7 @@
       if (first) fl.sort(function (a, b) { return (chKey(b) === first) - (chKey(a) === first); });
       return fl;
     }
-    if (group === 'Todos') return vis.filter(function (c) { return !c.intl; });
+    if (group === 'Todos') return vis.filter(function (c) { return !c.intl && !c.yt; });
     if (group === INTL_GROUP) return intlCountries(vis);
     return vis.filter(function (c) { return c.group === group; });
   }
@@ -718,6 +785,8 @@
 
   function playChannel(list, idx, group, newMode) {
     if (!list.length) return;
+    var pick = list[(idx + list.length) % list.length];
+    if (pick && pick.yt) { openYouTube(pick); return; }       // video de YouTube: se abre en su app
     sidePrevStop();
     zapList = list; zapIdx = (idx + list.length) % list.length; zapGroup = group;
     nowCh = zapList[zapIdx];
@@ -758,7 +827,7 @@
   var warmTimer = null, warmed = {};
   function warmChannel(c) {
     clearTimeout(warmTimer);
-    if (!c || !c.url || c.isCountry || (nowCh && c === nowCh)) return;
+    if (!c || !c.url || c.isCountry || c.yt || (nowCh && c === nowCh)) return;
     warmTimer = setTimeout(function () {
       var host = (c.url.match(/^https?:\/\/[^\/]+/) || [])[0];
       if (!host || warmed[c.url] > Date.now() - 20000) return;
@@ -784,7 +853,11 @@
     }
     if (video.play) { var p = video.play(); if (p && p.catch) p.catch(function () { }); }
   }
-  function zap(step) { playChannel(zapList, zapIdx + step, zapGroup); }
+  function zap(step) {                         // ▲▼ salta los videos de YouTube (no son canales en vivo)
+    var n = zapList.length, i = zapIdx;
+    for (var k = 0; k < n; k++) { i = (i + step + n) % n; if (!zapList[i].yt) break; }
+    if (zapList[i] && !zapList[i].yt) playChannel(zapList, i, zapGroup);
+  }
 
   function setMode(m) {
     mode = m;
@@ -1035,7 +1108,7 @@
     if (IS_PHONE) return;
     var c = sideList[sideIdx];
     if (c !== prevCh) sidePrevStop();
-    if (!sideOpen || mode !== 'full' || !c || c.isCountry || c === nowCh) return;   // el que ya ves no necesita vista previa
+    if (!sideOpen || mode !== 'full' || !c || c.isCountry || c.yt || c === nowCh) return;   // el que ya ves no necesita vista previa
     var box = $('sidePrev'), r, P = $('player').getBoundingClientRect();
     if (LIST_H) {                                  // horizontal: cubre la imagen de la tarjeta elegida
       var card = $('hbTrack').querySelector('.hcard.sel'); if (!card) return;
@@ -1112,7 +1185,7 @@
     if (sideOpen) bumpSide();
   }
   function toggleFav(c) {
-    if (isFav(c)) { delete favs[chKey(c)]; toast('Quitado de favoritos: ' + c.name); }
+    if (isFav(c)) { delete favs[chKey(c)]; if (c.yt) ytRemove(c); toast('Quitado de favoritos: ' + c.name); }
     else { favs[chKey(c)] = 1; toast('★ Agregado a favoritos: ' + c.name); }
     saveSet('favs', favs); afterListChange(c);
   }
@@ -1177,6 +1250,8 @@
     if (el.classList.contains('key')) { pressKey(el.getAttribute('data-k')); return; }
     if (el.id === 'voiceBtn') { startVoice(); return; }
     if (el.id === 'pipMoveBtn') { cyclePip(); return; }
+    if (el.id === 'exitBtn') { exitApp(); return; }
+    if (el.id === 'ytAdd') { ytAdd(); return; }
     if (el.id === 'wallToggle') { wallToggle(); return; }
     if (el.classList.contains('wt')) { wallActivate(el); return; }
     if (el.id === 'searchBtn') { if (searchOpen) closeSearch(false); else openSearch(); return; }
@@ -1226,7 +1301,7 @@
     $('listMode').textContent = LIST_H ? '▭ Horizontal (carrusel abajo) · cambiar a vertical' : '▯ Vertical (lista al costado) · cambiar a horizontal';
   }
   function updateSettingsInfo() {
-    updateListModeBtn();
+    updateListModeBtn(); ytInfo();
     $('favInfo').textContent = Object.keys(favs).length + ' favoritos · ' + Object.keys(hiddenSet).length + ' canales ocultos';
   }
 
@@ -1639,7 +1714,7 @@
     var n = 0;
     wallQueue = [];
     wallTiles.forEach(function (t) {
-      var want = t.visible && !t.failed && n < WALL_MAX;
+      var want = t.visible && !t.failed && !t.c.yt && n < WALL_MAX;
       if (want) n++;
       if (want && !t.live) wallQueue.push(t);
       else if (!want && t.live) wallStop(t);
@@ -1812,6 +1887,7 @@
   // Control remoto: OK en un cuadro lo agranda; con uno agrandado ◀ ▶ cambian de canal, OK = pantalla completa
   // TV: un clic = sonido de ese canal (solo uno suena) · doble clic = pantalla completa
   function wallTvClick(t) {
+    if (t.c.yt) { openYouTube(t.c); return; }
     var now = Date.now(), dbl = wallLastClick.t === t && now - wallLastClick.at < 450;
     wallLastClick = { t: t, at: dbl ? 0 : now };
     if (t.failed) { t.failed = false; t.el.classList.remove('err'); wallSchedule(); }
@@ -1951,7 +2027,7 @@
   function autoStartFavorite() {
     if (autoStarted || IS_PHONE) return;
     autoStarted = true;
-    var favList = listFor(FAV_GROUP);
+    var favList = listFor(FAV_GROUP).filter(function (c) { return !c.yt; });
     if (!favList.length || mode !== 'none') return;
     playChannel(favList, 0, FAV_GROUP, 'full');
   }

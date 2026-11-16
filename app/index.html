@@ -14,6 +14,7 @@
       <button class="tab focusable" data-view="live">Canales en vivo</button>
       <button class="tab focusable" data-view="apps">Apps</button>
       <button class="tab focusable" data-view="settings">Ajustes</button>
+      <button class="tab focusable exit-btn" id="exitBtn" title="Cerrar la app">⏻ Salir</button>
       <button class="tab focusable pipmove hidden" id="pipMoveBtn">⇲ Mover PiP</button>
     </nav>
     <div class="clock" id="clock"></div>
@@ -56,6 +57,13 @@
     </div>
     <p class="hint" id="appVersion"></p>
     <div class="row"><button class="btn ghost focusable" id="checkUpdate">⟳ Buscar actualización ahora</button></div>
+    <h2 class="sub">Videos de YouTube en Favoritos</h2>
+    <label class="field">
+      <span>Pega o escribe el enlace del video (youtube.com/watch?v=… · youtu.be/… · /live/…). Se abre en la app de YouTube.</span>
+      <input id="ytInput" class="focusable" type="text" spellcheck="false" autocomplete="off" placeholder="https://youtu.be/...">
+    </label>
+    <div class="row"><button class="btn focusable" id="ytAdd">＋ Agregar a favoritos</button></div>
+    <p class="hint" id="ytInfo"></p>
     <h2 class="sub tv-only">Lista de canales en pantalla completa</h2>
     <div class="row tv-only"><button class="btn ghost focusable" id="listMode"></button></div>
     <h2 class="sub">Favoritos y canales ocultos</h2>
