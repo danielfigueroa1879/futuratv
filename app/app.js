@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.0.9';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.1.0';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -1163,10 +1163,12 @@
   var prevSlots = null, prevTimer = null;
   // Protección (20 cuadros por segundo): mientras las vecinas están en vivo se mide cuántos cuadros por
   // segundo dibuja la pantalla; si baja de 20 se deja solo la del medio
-  var prevTriple = store('prevTriple') !== '0', fpsWin = null, fpsRaf = 0;
+  // prevWant = lo que eliges en Ajustes (se guarda) · prevTriple = lo que se usa ahora (la regla lo apaga solo
+  // mientras dura esta sesión; al volver a abrir la app se intenta de nuevo)
+  var prevWant = store('prevNeighbors') !== '0', prevTriple = prevWant, prevAutoOff = false, fpsWin = null, fpsRaf = 0;
   var FPS_MIN = 20;
   function prevFallback() {
-    prevTriple = false; store('prevTriple', '0'); fpsWin = null;
+    prevTriple = false; prevAutoOff = true; fpsWin = null; updatePrevBtn();
     toast('Para que se vea fluido, el carrusel muestra en vivo solo el canal del medio');
     sidePrevSchedule();
   }
@@ -1426,9 +1428,15 @@
       return;
     }
     if (el.id === 'resetM3u') { store('m3u', DEFAULT_M3U); $('m3uInput').value = DEFAULT_M3U; channels = []; toast('Lista restablecida'); return; }
+    if (el.id === 'prevMode') {
+      prevWant = !(prevWant && !prevAutoOff); prevTriple = prevWant; prevAutoOff = false;
+      store('prevNeighbors', prevWant ? '1' : '0'); updatePrevBtn();
+      toast(prevWant ? 'Carrusel: la tarjeta del medio y sus 2 vecinas en vivo' : 'Carrusel: solo la tarjeta del medio en vivo');
+      return;
+    }
     if (el.id === 'listMode') {
       LIST_H = !LIST_H; store('listMode', LIST_H ? 'h' : 'v'); updateListModeBtn();
-      prevTriple = true; store('prevTriple', '1');      // vuelve a intentar las vecinas en vivo
+      prevTriple = prevWant; prevAutoOff = false;       // vuelve a intentar las vecinas en vivo
       toast(LIST_H ? 'Lista horizontal (carrusel) con controles de tiempo' : 'Lista vertical (lateral)');
       return;
     }
@@ -1445,11 +1453,17 @@
       else { el.focus(); if (!IS_PHONE) toast('Escribe con el teclado · OK o ▲▼ para terminar'); }
     }
   }
+  function updatePrevBtn() {
+    var b = $('prevMode'); if (!b) return;
+    b.textContent = !prevWant ? 'Vistas previas en el carrusel: solo la del medio · cambiar a 3 en vivo'
+      : prevAutoOff ? 'Vistas previas: 3 en vivo (apagadas ahora porque bajó de 20 cuadros/s) · reintentar'
+      : 'Vistas previas en el carrusel: 3 en vivo · cambiar a solo la del medio';
+  }
   function updateListModeBtn() {
     $('listMode').textContent = LIST_H ? '▭ Horizontal (carrusel abajo) · cambiar a vertical' : '▯ Vertical (lista al costado) · cambiar a horizontal';
   }
   function updateSettingsInfo() {
-    updateListModeBtn(); ytInfo();
+    updateListModeBtn(); updatePrevBtn(); ytInfo();
     $('favInfo').textContent = Object.keys(favs).length + ' favoritos · ' + Object.keys(hiddenSet).length + ' canales ocultos';
   }
 
