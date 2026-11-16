@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.0.8';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.0.9';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -889,6 +889,13 @@
       try { if (window.fetch) fetch(c.url, { credentials: 'omit', cache: 'no-store' }).catch(function () { }); } catch (e) { }
     }, 350);
   }
+  function warmNow(list) {                        // pre-conexión inmediata (sin esperar) de varios canales
+    list.forEach(function (c) {
+      if (!c || !c.url || c.isCountry || c.yt || warmed[c.url] > Date.now() - 20000) return;
+      warmed[c.url] = Date.now();
+      try { if (window.fetch) fetch(c.url, { credentials: 'omit', cache: 'no-store' }).catch(function () { }); } catch (e) { }
+    });
+  }
   function startStream(ch) {
     var video = $('video');
     if (window.Hls && window.Hls.isSupported()) {
@@ -1144,23 +1151,23 @@
 
   // ---------- TV: vista previa en vivo (solo imagen) del canal elegido en la lista lateral ----------
   // Un solo video chico y sin sonido; se carga cuando te detienes medio segundo sobre un canal.
-  var PREV_HLS = { enableWorker: true, startLevel: 0, testBandwidth: false, abrEwmaDefaultEstimate: 300000,
+  var PREV_HLS = { enableWorker: true, startLevel: 0, testBandwidth: false, abrEwmaDefaultEstimate: 300000, startFragPrefetch: true,
     capLevelToPlayerSize: true, maxBufferLength: 6, maxMaxBufferLength: 10, maxBufferSize: 4 * 1000 * 1000, backBufferLength: 0,
     manifestLoadingTimeOut: 8000, levelLoadingTimeOut: 8000, fragLoadingTimeOut: 10000 };
   // vecinas: aún más livianas (calidad mínima y búfer mínimo)
-  var PREV_HLS_SIDE = { enableWorker: true, startLevel: 0, testBandwidth: false, abrEwmaDefaultEstimate: 150000,
+  var PREV_HLS_SIDE = { enableWorker: true, startLevel: 0, testBandwidth: false, abrEwmaDefaultEstimate: 150000, startFragPrefetch: true,
     capLevelToPlayerSize: true, maxBufferLength: 4, maxMaxBufferLength: 6, maxBufferSize: 2 * 1000 * 1000, backBufferLength: 0,
     manifestLoadingTimeOut: 8000, levelLoadingTimeOut: 8000, fragLoadingTimeOut: 10000 };
   // Hasta 3 videos de vista previa (horizontal: la tarjeta del medio y sus 2 vecinas; vertical: solo 1).
   // Al moverse, un video ya cargado se reubica (no se recarga): solo carga el canal nuevo.
   var prevSlots = null, prevTimer = null;
-  // Protección (50 cuadros por segundo): mientras las vecinas están en vivo se mide cuántos cuadros por
-  // segundo dibuja la pantalla; si baja de 50 (o el canal principal pierde cuadros) se deja solo la del medio
-  var prevTriple = store('prevTriple') !== '0', prevQ = null, fpsWin = null, fpsRaf = 0;
-  var FPS_MIN = 50;
+  // Protección (20 cuadros por segundo): mientras las vecinas están en vivo se mide cuántos cuadros por
+  // segundo dibuja la pantalla; si baja de 20 se deja solo la del medio
+  var prevTriple = store('prevTriple') !== '0', fpsWin = null, fpsRaf = 0;
+  var FPS_MIN = 20;
   function prevFallback() {
     prevTriple = false; store('prevTriple', '0'); fpsWin = null;
-    toast('Para mantener 50 cuadros por segundo, el carrusel muestra en vivo solo el canal del medio');
+    toast('Para que se vea fluido, el carrusel muestra en vivo solo el canal del medio');
     sidePrevSchedule();
   }
   function fpsTick(t) {
@@ -1178,18 +1185,9 @@
     }
     fpsRaf = requestAnimationFrame(fpsTick);
   }
-  function prevGuard() {
-    if (!prevTriple || !LIST_H || !sideOpen || mode !== 'full') { prevQ = null; return; }
+  function prevGuard() {                          // solo la regla de los 20 cuadros por segundo
+    if (!prevTriple || !LIST_H || !sideOpen || mode !== 'full') return;
     if (!fpsRaf) fpsRaf = requestAnimationFrame(fpsTick);
-    var v = $('video'); if (!v.getVideoPlaybackQuality) return;
-    var on = prevSlots && prevSlots.filter(function (sl) { return sl.ch; }).length >= 2;
-    if (!on) { prevQ = null; return; }
-    var q = v.getVideoPlaybackQuality();
-    if (!prevQ) { prevQ = { d: q.droppedVideoFrames, t: q.totalVideoFrames, at: Date.now() }; return; }
-    if (Date.now() - prevQ.at < 4000) return;
-    var dd = q.droppedVideoFrames - prevQ.d, dt = q.totalVideoFrames - prevQ.t;
-    prevQ = { d: q.droppedVideoFrames, t: q.totalVideoFrames, at: Date.now() };
-    if (dt > 30 && dd / dt > 0.15) prevFallback();
   }
   setInterval(prevGuard, 1000);
   function prevInit() {
@@ -1245,6 +1243,7 @@
       if (row) want.push([row, sideList[sideIdx], false]);
     }
     want = want.filter(function (w) { return w[1] && !w[1].isCountry && !w[1].yt && w[1] !== nowCh; });   // el que ya ves no se repite
+    if (LIST_H && prevTriple) warmNow([sideList[sideIdx - 2], sideList[sideIdx + 2]]);   // los que vienen: conexión lista
     var used = [];
     want.forEach(function (w) {                    // 1) reutiliza el video que ya muestra ese canal
       for (var j = 0; j < slots.length; j++) if (used.indexOf(j) < 0 && slots[j].ch === w[1]) {
@@ -1265,10 +1264,10 @@
     $('player').classList.toggle('has-prev', want.length > 0);
     if (!pending.length) return;
     prevTimer = setTimeout(function () {
-      pending.forEach(function (w, n) {             // primero el del medio; las vecinas un poco después
-        setTimeout(function () { if (w.slot && !w.slot.ch && w.slot.box.classList.contains('on')) slotLoad(w.slot, w[1], w[2]); }, w[2] ? 700 + n * 300 : 0);
+      pending.forEach(function (w, n) {             // el del medio primero y las vecinas casi a la vez
+        setTimeout(function () { if (w.slot && !w.slot.ch && w.slot.box.classList.contains('on')) slotLoad(w.slot, w[1], w[2]); }, w[2] ? 120 * n : 0);
       });
-    }, 500);
+    }, 350);
   }
   function slotLoad(sl, c, side) {
     if (!sideOpen || mode !== 'full') return;
