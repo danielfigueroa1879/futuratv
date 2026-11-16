@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.0.2';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.0.3';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -407,7 +407,11 @@
         return words.every(function (w) { return n.indexOf(w) >= 0; });
       });
     }
-    if (group === FAV_GROUP) return vis.filter(isFav);
+    if (group === FAV_GROUP) {                     // el elegido como «primero» va arriba (es el que se abre al iniciar)
+      var fl = vis.filter(isFav), first = store('favFirst');
+      if (first) fl.sort(function (a, b) { return (chKey(b) === first) - (chKey(a) === first); });
+      return fl;
+    }
     if (group === 'Todos') return vis.filter(function (c) { return !c.intl; });
     if (group === INTL_GROUP) return intlCountries(vis);
     return vis.filter(function (c) { return c.group === group; });
@@ -1091,6 +1095,7 @@
     if (!(mode === 'pip' && nowCh === c)) acts.push(['pip', '⧉  Ver en ventana chica (PiP)']);
     if (mode === 'pip') acts.push(['pipmove', '⇲  Mover la ventana PiP a otra esquina']);
     acts.push(isFav(c) ? ['unfav', '☆  Quitar de favoritos'] : ['fav', '★  Agregar a favoritos']);
+    if (!(isFav(c) && store('favFirst') === chKey(c))) acts.push(['favfirst', '⬆  Abrir este canal al iniciar (primer favorito)']);
     acts.push(isHidden(c) ? ['unhide', '👁  Mostrar canal de nuevo'] : ['hide', '🚫  Ocultar canal (no se ve)']);
     acts.push(['cancel', 'Cancelar']);
     $('menuBtns').innerHTML = acts.map(function (a) {
@@ -1144,6 +1149,12 @@
     }
     else if (act === 'pipmove') cyclePip();
     else if (act === 'fav' || act === 'unfav') toggleFav(c);
+    else if (act === 'favfirst') {
+      if (!isFav(c)) { favs[chKey(c)] = 1; saveSet('favs', favs); }
+      store('favFirst', chKey(c));
+      refreshChannels();
+      toast('⬆ ' + c.name + ' es tu primer favorito: se abrirá al iniciar la app');
+    }
     else if (act === 'hide') hideChannel(c);
     else if (act === 'unhide') unhideChannel(c);
   }
@@ -1935,14 +1946,14 @@
     });
   }, 1500);
 
-  // TV: al abrir la app se pone el primer favorito en la ventana chica (PiP)
+  // TV: al abrir la app se pone el primer favorito en pantalla completa
   var autoStarted = false;
   function autoStartFavorite() {
     if (autoStarted || IS_PHONE) return;
     autoStarted = true;
     var favList = listFor(FAV_GROUP);
     if (!favList.length || mode !== 'none') return;
-    playChannel(favList, 0, FAV_GROUP, 'pip');
+    playChannel(favList, 0, FAV_GROUP, 'full');
   }
 
   // ---------- Inicio ----------
