@@ -760,3 +760,6 @@ html:not(.phone) .wt-in video { transition: none; }
 html:not(.phone) .channels .ch { content-visibility: auto; contain-intrinsic-size: auto 170px; }
 .tab.exit-btn { color: #fca5a5; }
 .tab.exit-btn.focused { color: #b91c1c; }
+/* TV: cuadro de texto marcado (sin teclado) y en edición (con teclado) */
+html:not(.phone) .field input.focused { border-color: #8b5cf6; box-shadow: 0 0 0 4px rgba(139,92,246,.35); outline: 0 !important; }
+html:not(.phone) .field input:focus { border-color: #22d3ee; box-shadow: 0 0 0 4px rgba(34,211,238,.4); background: #17204a; outline: 0; }

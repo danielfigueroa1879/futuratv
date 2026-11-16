@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.0.4';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.0.5';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -242,7 +242,11 @@
     if (focused) focused.classList.remove('focused');
     focused = el; el.classList.add('focused');
     if (el.hasAttribute('data-ch')) warmChannel(filtered[+el.getAttribute('data-ch')]);
-    if (el.tagName === 'INPUT') el.focus(); else if (document.activeElement && document.activeElement.tagName === 'INPUT') document.activeElement.blur();
+    // TV: los cuadros de texto de Ajustes solo se marcan al pasar (no abren el teclado ni atrapan las flechas);
+    // se escribe apretando OK sobre ellos
+    var editOnOk = !IS_PHONE && el.tagName === 'INPUT' && el.id !== 'searchInput';
+    if (el.tagName === 'INPUT' && !editOnOk) el.focus();
+    else if (document.activeElement && document.activeElement.tagName === 'INPUT') document.activeElement.blur();
     if (el.classList.contains('ch')) scrollGridTo(el);
     else if (el.scrollIntoView && !el.classList.contains('key')) el.scrollIntoView({ block: 'nearest' });
   }
@@ -252,7 +256,30 @@
     else if (top + h + 20 > g.scrollTop + g.clientHeight) g.scrollTop = top + h + 20 - g.clientHeight;
     scheduleLogos();
   }
+  // Ajustes: ▲▼ recorren los elementos uno por uno, en el orden de la página (sin saltarse botones)
+  function settingsMove(dir) {
+    if (menuOpen || currentView !== 'settings' || (dir !== 'up' && dir !== 'down') || !focused) return false;
+    var items = Array.prototype.filter.call($('view-settings').querySelectorAll('.focusable'), function (el) { return el.offsetParent !== null; });
+    var inTabs = focused.classList.contains('tab'), i = items.indexOf(focused);
+    if (inTabs) { if (dir === 'down' && items.length) { setFocus(items[0]); return true; } return false; }
+    if (i < 0) return false;
+    if (dir === 'down') {                        // siguiente elemento que esté más abajo (salta los de la misma fila)
+      var top = focused.getBoundingClientRect().top;
+      for (var j = i + 1; j < items.length; j++) if (items[j].getBoundingClientRect().top > top + 5) { setFocus(items[j]); return true; }
+      return true;
+    }
+    var t0 = focused.getBoundingClientRect().top;
+    for (var k = i - 1; k >= 0; k--) {
+      var tk = items[k].getBoundingClientRect().top;
+      if (tk < t0 - 5) {                         // fila de arriba: su primer elemento
+        while (k > 0 && Math.abs(items[k - 1].getBoundingClientRect().top - tk) < 5) k--;
+        setFocus(items[k]); return true;
+      }
+    }
+    setFocus(document.querySelector('.tab[data-view="settings"]')); return true;
+  }
   function move(dir) {
+    if (settingsMove(dir)) return;
     if (!menuOpen && focused && focused.classList.contains('ch') && gridMove(dir)) return;
     var list = visibleFocusables();
     if (!focused || list.indexOf(focused) < 0) { setFocus(list[0]); return; }
@@ -1295,7 +1322,10 @@
     }
     if (el.id === 'unhideAll') { hiddenSet = {}; saveSet('hidden', hiddenSet); refreshChannels(); updateSettingsInfo(); toast('Todos los canales vuelven a estar visibles'); return; }
     if (el.id === 'clearFavs') { favs = {}; saveSet('favs', favs); refreshChannels(); updateSettingsInfo(); toast('Favoritos borrados'); return; }
-    if (el.tagName === 'INPUT') el.focus();
+    if (el.tagName === 'INPUT') {                // OK: empieza a escribir · OK otra vez: termina
+      if (document.activeElement === el) { el.blur(); toast('Listo'); }
+      else { el.focus(); if (!IS_PHONE) toast('Escribe con el teclado · OK o ▲▼ para terminar'); }
+    }
   }
   function updateListModeBtn() {
     $('listMode').textContent = LIST_H ? '▭ Horizontal (carrusel abajo) · cambiar a vertical' : '▯ Vertical (lista al costado) · cambiar a horizontal';
@@ -1358,6 +1388,9 @@
       if (wallKey(k)) { e.preventDefault(); return; }
     }
     var typing = document.activeElement && document.activeElement.tagName === 'INPUT';
+    if (typing && !IS_PHONE && (k === KEY.UP || k === KEY.DOWN) && document.activeElement.id !== 'searchInput') {
+      document.activeElement.blur(); typing = false;             // ▲▼ terminan de escribir y siguen navegando
+    }
     if (typing && (k === KEY.LEFT || k === KEY.RIGHT || k === KEY.BACKSPACE)) return; // edición de texto
     if (searchOpen && !typing && !menuOpen && mode !== 'full' && e.key && e.key.length === 1 && /[a-z0-9ñ ]/i.test(e.key)) {
       searchQuery += e.key.toLowerCase(); updateSearch(); e.preventDefault(); return;      // teclado físico
