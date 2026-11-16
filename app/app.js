@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.1.0';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.1.1';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -889,12 +889,37 @@
       try { if (window.fetch) fetch(c.url, { credentials: 'omit', cache: 'no-store' }).catch(function () { }); } catch (e) { }
     }, 350);
   }
-  function warmNow(list) {                        // pre-conexión inmediata (sin esperar) de varios canales
+  function warmNow(list) {                        // pre-carga inmediata de varios canales
     list.forEach(function (c) {
       if (!c || !c.url || c.isCountry || c.yt || warmed[c.url] > Date.now() - 20000) return;
       warmed[c.url] = Date.now();
-      try { if (window.fetch) fetch(c.url, { credentials: 'omit', cache: 'no-store' }).catch(function () { }); } catch (e) { }
+      prefetchStart(c.url);
     });
+  }
+  // Pre-carga del primer pedazo de video (calidad más baja): lista principal → lista de calidad → pedazo
+  // donde arrancará la vista previa. Queda en la caché del navegador y al moverse la tarjeta aparece al instante.
+  function prefetchStart(url) {
+    if (!window.fetch) return;
+    var abs = function (u, base) { try { return new URL(u, base).href; } catch (e) { return u; } };
+    var get = function (u) { return fetch(u, { credentials: 'omit' }).then(function (r) { if (!r.ok) throw new Error(r.status); return r.text(); }); };
+    get(url).then(function (txt) {
+      if (txt.indexOf('#EXT-X-STREAM-INF') < 0) return [url, txt];     // ya es una lista de pedazos
+      var lines = txt.split(/\r?\n/), best = null, bw = Infinity;
+      for (var i = 0; i < lines.length; i++) {
+        var m = lines[i].match(/^#EXT-X-STREAM-INF:.*?BANDWIDTH=(\d+)/);
+        if (m && lines[i + 1] && +m[1] < bw) { bw = +m[1]; best = lines[i + 1].trim(); }
+      }
+      if (!best) return null;
+      var lv = abs(best, url);
+      return get(lv).then(function (t) { return [lv, t]; });
+    }).then(function (r) {
+      if (!r) return;
+      var segs = r[1].split(/\r?\n/).filter(function (l) { return l && l.charAt(0) !== '#'; });
+      if (!segs.length) return;
+      var live = r[1].indexOf('#EXT-X-ENDLIST') < 0;
+      var i = live ? Math.max(0, segs.length - 3) : 0;                // donde arranca hls.js (3 pedazos antes del final)
+      fetch(abs(segs[i], r[0]), { credentials: 'omit' }).catch(function () { });
+    }).catch(function () { });
   }
   function startStream(ch) {
     var video = $('video');
@@ -1245,7 +1270,7 @@
       if (row) want.push([row, sideList[sideIdx], false]);
     }
     want = want.filter(function (w) { return w[1] && !w[1].isCountry && !w[1].yt && w[1] !== nowCh; });   // el que ya ves no se repite
-    if (LIST_H && prevTriple) warmNow([sideList[sideIdx - 2], sideList[sideIdx + 2]]);   // los que vienen: conexión lista
+    if (LIST_H) warmNow(prevTriple ? [sideList[sideIdx - 2], sideList[sideIdx + 2]] : [sideList[sideIdx - 1], sideList[sideIdx + 1]]);   // los que vienen: pre-cargados
     var used = [];
     want.forEach(function (w) {                    // 1) reutiliza el video que ya muestra ese canal
       for (var j = 0; j < slots.length; j++) if (used.indexOf(j) < 0 && slots[j].ch === w[1]) {
@@ -1269,7 +1294,7 @@
       pending.forEach(function (w, n) {             // el del medio primero y las vecinas casi a la vez
         setTimeout(function () { if (w.slot && !w.slot.ch && w.slot.box.classList.contains('on')) slotLoad(w.slot, w[1], w[2]); }, w[2] ? 120 * n : 0);
       });
-    }, 350);
+    }, 150);   // espera al detenerse (si se deja apretada la flecha no carga nada)
   }
   function slotLoad(sl, c, side) {
     if (!sideOpen || mode !== 'full') return;
