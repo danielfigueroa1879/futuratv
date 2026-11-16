@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.1.3';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.2.0';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -869,7 +869,7 @@
     maxBufferLength: 20, maxMaxBufferLength: 40,
     // TV: guarda hasta 10 min de lo ya visto para poder retroceder aunque el canal guarde menos
     // (si la memoria no alcanza, el navegador descarta lo más antiguo solo)
-    backBufferLength: IS_PHONE ? 90 : 600,
+    backBufferLength: 600,
     manifestLoadingTimeOut: 10000, levelLoadingTimeOut: 10000, fragLoadingTimeOut: 15000,
     // apertura rápida: sin prueba de velocidad (se usa la medida guardada) y primer pedazo pedido en paralelo
     testBandwidth: false, startFragPrefetch: true
@@ -1045,7 +1045,7 @@
     return g;
   }
   // TV: la lista puede ser vertical (lateral) u horizontal (carrusel abajo, con controles de tiempo)
-  var LIST_H = !IS_PHONE && store('listMode') === 'h', hbFocus = -1;   // -1 = tarjetas · 0..n = botón de tiempo
+  var LIST_H = store('listMode') === 'h', hbFocus = -1;   // -1 = tarjetas · 0..n = botón de tiempo
   function openSide() {
     sideOpen = true; hbFocus = -1;
     sideGroup = sideGroups().indexOf(zapGroup) >= 0 ? zapGroup : 'Todos';
@@ -1207,6 +1207,21 @@
     $('hbWin').textContent = 'Puedes retroceder hasta ' + fmtT(r.end - r.start);
   }
   setInterval(hbTimeTick, 500);
+  // Celular: deslizar el carrusel cambia de canal; tocar el título cambia de categoría
+  (function () {
+    var x0 = 0, y0 = 0, swiped = false;
+    $('hbTrack').addEventListener('touchstart', function (e) { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; swiped = false; }, { passive: true });
+    $('hbTrack').addEventListener('touchend', function (e) {
+      var t = e.changedTouches[0], dx = t.clientX - x0, dy = t.clientY - y0;
+      if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) {
+        swiped = true; hbFocus = -1;
+        var steps = Math.max(1, Math.min(3, Math.round(Math.abs(dx) / 120)));      // deslizar más largo = más canales
+        sideMove(dx < 0 ? steps : -steps); bumpSide();
+      }
+    }, { passive: true });
+    $('hbTrack').addEventListener('click', function (e) { if (swiped) { swiped = false; e.stopPropagation(); e.preventDefault(); } }, true);
+    document.querySelector('.hb-head').addEventListener('click', function (e) { e.stopPropagation(); sideGroupMove(1); bumpSide(); });
+  })();
 
   // ---------- TV: vista previa en vivo (solo imagen) del canal elegido en la lista lateral ----------
   // Un solo video chico y sin sonido; se carga cuando te detienes medio segundo sobre un canal.
@@ -1280,16 +1295,15 @@
       b.querySelector('.sp-lab').innerHTML = el.querySelector('.hlab').innerHTML;   // el nombre va sobre la imagen
     } else {
       r = el.getBoundingClientRect(); if (r.height < 10) return false;
-      var S = $('side').getBoundingClientRect();
-      b.style.width = '128px'; b.style.height = '72px';
-      b.style.left = (S.right - P.left - 78 - 128) + 'px'; b.style.top = (r.top - P.top + (r.height - 72) / 2) + 'px';
+      var S = $('side').getBoundingClientRect(), pw = IS_PHONE ? 72 : 128, ph = IS_PHONE ? 40 : 72, gap = IS_PHONE ? 54 : 78;
+      b.style.width = pw + 'px'; b.style.height = ph + 'px';
+      b.style.left = (S.right - P.left - gap - pw) + 'px'; b.style.top = (r.top - P.top + (r.height - ph) / 2) + 'px';
     }
     b.classList.add('on'); b.classList.toggle('side', !!side);
     return true;
   }
   function sidePrevSchedule() {
     if (sideOpen) warmChannel(sideList[sideIdx]);
-    if (IS_PHONE) return;
     var slots = prevInit();
     clearTimeout(prevTimer);
     if (!sideOpen || mode !== 'full') { sidePrevStop(); return; }
@@ -1673,6 +1687,8 @@
     if (Date.now() - pipDragEnd < 400) { e.preventDefault(); return; }
     var pt = e.target.closest && e.target.closest('[data-pt]');
     if (pt) { playerTool(pt.getAttribute('data-pt')); return; }
+    if (IS_PHONE && mode === 'full' && sideOpen && e.target.closest && e.target.closest('#player') &&
+        !e.target.closest('#side') && !e.target.closest('#hbar')) { closeSide(); return; }      // tocar fuera de la lista la cierra
     if (IS_PHONE && mode === 'full' && !sideOpen && e.target.closest && e.target.closest('#player')) { showTools(); return; }
     var hc = e.target.closest && e.target.closest('[data-hc]');
     if (hc) { hbAction(hc.getAttribute('data-hc')); bumpSide(); return; }
@@ -1796,6 +1812,7 @@
   var toolsTimer = null;
   function showTools() {
     $('ptools').classList.remove('hidden');
+    try { var lr = liveRange(), v = $('video'); $('ptLive').classList.toggle('hidden', !(lr && lr.end - v.currentTime >= 6)); } catch (e) { }
     showOsd();
     clearTimeout(toolsTimer);
     toolsTimer = setTimeout(function () { $('ptools').classList.add('hidden'); }, 4500);
@@ -1804,6 +1821,9 @@
     if (t === 'close') { if (!wallReturn()) stopPlayer(); return; }   // si vino del muro, vuelve a él
     if (t === 'pip') { if (!wallReturn()) minimize(); return; }
     if (t === 'list') { if (mode !== 'full') setMode('full'); $('ptools').classList.add('hidden'); openSide(); return; }
+    if (t === 'back') { seekBy(-30); showTools(); return; }
+    if (t === 'fwd') { seekBy(30); showTools(); return; }
+    if (t === 'live') { goLive(); showTools(); return; }
     if (t === 'prev') { zap(-1); showTools(); return; }
     if (t === 'next') { zap(1); showTools(); return; }
     if (t === 'full') { setMode('full'); showTools(); return; }
@@ -1851,7 +1871,7 @@
     liveSyncDurationCount: 4, maxStarvationDelay: 6, startFragPrefetch: true,   // más colchón: menos cortes
     manifestLoadingTimeOut: 10000, levelLoadingTimeOut: 10000, fragLoadingTimeOut: 15000
   };
-  if (!IS_PHONE) {                            // solo TV: más reintentos antes de dar un canal por caído
+  {                                            // más reintentos antes de dar un canal por caído
     WALL_HLS.manifestLoadingMaxRetry = 3; WALL_HLS.levelLoadingMaxRetry = 5; WALL_HLS.fragLoadingMaxRetry = 6;
     WALL_HLS.manifestLoadingRetryDelay = 1000; WALL_HLS.levelLoadingRetryDelay = 1000; WALL_HLS.fragLoadingRetryDelay = 1000;
     WALL_HLS.nudgeMaxRetry = 6;               // pequeños saltos para destrabar la imagen sin recargar
@@ -1972,7 +1992,7 @@
       t.fixes = 0;
       t.hls.on(window.Hls.Events.ERROR, function (_, d) {
         if (!d.fatal) return;
-        if (!IS_PHONE && wallRecover(t, d)) return;       // TV: intenta recuperarse antes de rendirse
+        if (wallRecover(t, d)) return;                    // intenta recuperarse antes de rendirse
         wallFail(t);
       });
     } else {
@@ -2252,7 +2272,7 @@
   // TV: al abrir la app se pone el primer favorito en pantalla completa
   var autoStarted = false;
   function autoStartFavorite() {
-    if (autoStarted || IS_PHONE) return;
+    if (autoStarted) return;
     autoStarted = true;
     var favList = listFor(FAV_GROUP).filter(function (c) { return !c.yt; });
     if (!favList.length || mode !== 'none') return;

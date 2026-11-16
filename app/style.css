@@ -678,7 +678,6 @@ html:not(.phone) .wt-in video { transition: none; }
 .side-prev.fail::after { content: 'Sin señal'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 15px; color: #9aa6c2; }
 .side-prev.on { display: block; }
 #player.has-prev .srow.sel .nm { margin-right: 150px; }
-.phone .side-prev { display: none !important; }
 
 .phone .tv-only { display: none !important; }
 
@@ -732,7 +731,6 @@ html:not(.phone) .wt-in video { transition: none; }
 .hb-delay { font-size: 22px; font-weight: 700; color: #ff4d6d; min-width: 110px; text-align: right; }
 .hbar.behind .hb-delay { color: #ffd23f; }
 .hb-foot { font-size: 17px; color: #9aa6c2; padding: 14px 70px 0; }
-.phone .hbar { display: none !important; }
 
 /* ---- Carrusel: tarjetas de vidrio esmerilado (sin desenfoque real, para que siga fluido en TV) ---- */
 .hbar { background: linear-gradient(transparent, rgba(8,11,20,.55) 25%, rgba(8,11,20,.8)); }
@@ -785,15 +783,50 @@ html:not(.phone) .field input:focus { border-color: #22d3ee; box-shadow: 0 0 0 4
 #player.list-h .side-prev.side .sp-lab b { font-size: 19px; }
 
 /* ---- Lista vertical con el mismo estilo de vidrio e iluminación ---- */
-html:not(.phone) .side {
+/* (también en celular) */
+.side {
   background: linear-gradient(90deg, rgba(22,30,60,.78), rgba(22,30,60,.52));
   box-shadow: inset -1px 0 0 rgba(255,255,255,.22), inset 0 1px 0 rgba(255,255,255,.12);
 }
 html:not(.phone) .srow { margin: 2px 14px; padding: 0 16px; border-left: 0; border-radius: 14px; }
-html:not(.phone) .srow.sel {
+.srow.sel {
   background: linear-gradient(140deg, rgba(255,255,255,.22), rgba(255,255,255,.08) 55%, rgba(255,255,255,.14));
   color: #fff; border-left: 0;
   box-shadow: 0 0 0 2px #fff, 0 0 22px rgba(255,255,255,.45), inset 0 1px 0 rgba(255,255,255,.5);
 }
-html:not(.phone) .srow.sel.now { color: #ffb3c0; }
+.srow.sel.now { color: #ffb3c0; }
 #player:not(.list-h) .side-prev { box-shadow: 0 0 0 2px #fff, 0 0 16px rgba(255,255,255,.45); border-radius: 8px; }
+
+/* ---- Celular: carrusel, vistas previas, vidrio, retroceder ---- */
+.phone .srow { margin: 2px 8px; padding: 0 10px; border-left: 0; border-radius: 12px; }
+.phone .channels .ch { content-visibility: auto; contain-intrinsic-size: auto 100px; }
+.phone .hbar { padding: 10px 0 calc(env(safe-area-inset-bottom) + 8px); }
+.phone .hb-head { font-size: 16px; padding: 0 16px 6px; gap: 10px; }
+.phone .hb-head .arrow { font-size: 13px; }
+.phone .hb-count { font-size: 12px; }
+.phone .hb-track { height: 140px; gap: 10px; }
+.phone .hcard { width: 128px; height: 72px; border-radius: 10px; }
+.phone .hcard.sel { width: 210px; height: 118px; }
+.phone .hcard .hlab { padding: 14px 8px 5px; }
+.phone .hcard .hlab b, .phone .sp-lab b { font-size: 12px !important; }
+.phone .hcard.sel .hlab b, .phone #player.list-h .side-prev:not(.side) .sp-lab b { font-size: 15px !important; }
+.phone .hcard .hlab small, .phone .sp-lab small { font-size: 11px; }
+.phone .hthumb img { max-width: 40%; max-height: 46%; }
+.phone .hthumb .ph { width: 36px; height: 36px; font-size: 16px; }
+.phone .hb-ctrl { gap: 8px; padding: 8px 12px 0; flex-wrap: wrap; }
+.phone .hc { font-size: 13px; padding: 7px 12px; }
+.phone .hb-time { order: 9; flex-basis: 100%; gap: 4px; }
+.phone #hbWin { font-size: 11px; }
+.phone .hb-delay { font-size: 13px; min-width: 0; }
+.phone .hb-foot { display: none; }
+.phone .ptools .tbtn { font-size: 18px; }
+.phone .ptools .tbtn.live { width: auto; padding: 0 12px; border-radius: 24px; font-size: 12px; font-weight: 700; color: #ff4d6d; }
+.phone .ptools .tbtn.live.hidden { display: none; }
+@media (orientation: portrait) {
+  .phone .ptools { gap: 6px; padding: 7px 8px; }
+  .phone .ptools button { width: 38px; height: 38px; font-size: 18px; }
+  .phone .ptools button.main { padding: 0 10px; }
+  .phone .ptools button.main span { display: none; }
+}
+
+.phone #player.has-prev .srow.sel .nm { margin-right: 80px; }

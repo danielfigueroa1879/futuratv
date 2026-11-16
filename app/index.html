@@ -62,12 +62,12 @@
       <span>Pega o escribe el enlace del video (youtube.com/watch?v=… · youtu.be/… · /live/…). Se abre en la app de YouTube.</span>
       <input id="ytInput" class="focusable" type="text" spellcheck="false" autocomplete="off" placeholder="https://youtu.be/...">
     </label>
-    <div class="row"><button class="btn focusable" id="ytAdd">＋ Agregar a favoritos</button><button class="btn ghost focusable" id="linkPhone">📱 Enviar enlace desde el celular</button></div>
+    <div class="row"><button class="btn focusable" id="ytAdd">＋ Agregar a favoritos</button><button class="btn ghost focusable tv-only" id="linkPhone">📱 Enviar enlace desde el celular</button></div>
     <div class="link-qr hidden" id="linkBox"><div class="qr" id="linkQr"></div><p class="hint" id="linkTxt"></p></div>
     <p class="hint" id="ytInfo"></p>
-    <h2 class="sub tv-only">Lista de canales en pantalla completa</h2>
-    <div class="row tv-only"><button class="btn ghost focusable" id="listMode"></button></div>
-    <div class="row tv-only"><button class="btn ghost focusable" id="prevMode"></button></div>
+    <h2 class="sub">Lista de canales en pantalla completa</h2>
+    <div class="row"><button class="btn ghost focusable" id="listMode"></button></div>
+    <div class="row"><button class="btn ghost focusable" id="prevMode"></button></div>
     <h2 class="sub">Favoritos y canales ocultos</h2>
     <p class="hint" id="favInfo"></p>
     <div class="row">
@@ -120,9 +120,12 @@
     <div class="side-prev" id="sidePrev"><video muted playsinline disablepictureinpicture></video><div class="sp-lab"></div></div>
     <div class="ptools hidden" id="ptools">
       <button data-pt="close" aria-label="Cerrar"><svg class="ico" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      <button data-pt="back" class="tbtn" aria-label="Retroceder 30 segundos">⏪</button>
       <button data-pt="prev" aria-label="Canal anterior"><svg class="ico" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
       <button data-pt="list" class="main" aria-label="Lista de canales"><svg class="ico" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg><span>Canales</span></button>
       <button data-pt="next" aria-label="Canal siguiente"><svg class="ico" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>
+      <button data-pt="fwd" class="tbtn" aria-label="Adelantar 30 segundos">⏩</button>
+      <button data-pt="live" class="tbtn live hidden" id="ptLive" aria-label="Volver al directo">● EN VIVO</button>
       <button data-pt="pip" aria-label="Ventana chica"><svg class="ico" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><rect x="12" y="11" width="7" height="6" rx="1"/></svg></button>
     </div>
     <div class="spinner" id="spinner"></div>
