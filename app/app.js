@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.2.0';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.2.1';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -990,6 +990,7 @@
     applyPipPos();
     $('pipMoveBtn').classList.toggle('hidden', m !== 'pip' || IS_PHONE);
     if (m !== 'pip' && focused === $('pipMoveBtn')) setFocus(document.querySelector('.tab.active') || document.querySelector('.tab'));
+    if (m !== 'pip' && pipMoving) stopPipMove();
     if (m !== 'full') { closeSide(); $('ptools').classList.add('hidden'); }
     if (m === 'full') { if (IS_PHONE) showTools(); else showOsd(); }
   }
@@ -1441,7 +1442,7 @@
       else { var j = filtered.indexOf(c); playChannel(filtered.slice(), j < 0 ? 0 : j, activeGroup, 'pip'); }
       minimize();
     }
-    else if (act === 'pipmove') cyclePip();
+    else if (act === 'pipmove') startPipMove();
     else if (act === 'fav' || act === 'unfav') toggleFav(c);
     else if (act === 'favfirst') {
       if (!isFav(c)) { favs[chKey(c)] = 1; saveSet('favs', favs); }
@@ -1470,7 +1471,7 @@
     if (el.classList.contains('mbtn')) { menuAction(el.getAttribute('data-act')); return; }
     if (el.classList.contains('key')) { pressKey(el.getAttribute('data-k')); return; }
     if (el.id === 'voiceBtn') { startVoice(); return; }
-    if (el.id === 'pipMoveBtn') { cyclePip(); return; }
+    if (el.id === 'pipMoveBtn') { startPipMove(); return; }
     if (el.id === 'exitBtn') { exitApp(); return; }
     if (el.id === 'ytAdd') { ytAdd(); return; }
     if (el.id === 'linkPhone') { showLinkQr(); return; }
@@ -1545,6 +1546,7 @@
 
   // Devuelve true si manejó ATRÁS; false si ya estamos en el inicio (la app debe cerrarse).
   function goBack() {
+    if (pipMoving) { stopPipMove(); return true; }       // ATRÁS en modo mover: deja la ventana ahí
     if (wallBig) { wallCollapse(); return true; }        // muro de favoritos: el agrandado vuelve a su lugar
     if (listening) { cancelVoice(); return true; }
     if (document.activeElement && document.activeElement.tagName === 'INPUT') document.activeElement.blur();
@@ -1592,6 +1594,7 @@
       if (k === KEY.BACK || k === KEY.ESC || k === KEY.BACKSPACE || k === KEY.ENTER) cancelVoice();
       e.preventDefault(); return;
     }
+    if (pipMoving && pipMoveKey(k, e)) { e.preventDefault(); return; }      // modo mover PiP
     if (wallBig && !menuOpen && k !== KEY.BACK && k !== KEY.ESC && k !== KEY.BACKSPACE) {
       if (wallKey(k)) { e.preventDefault(); return; }
     }
@@ -1606,7 +1609,7 @@
 
     // Teclas especiales: colores del control y MENU
     if (k === KEY.MENU || k === KEY.M) { if (!typing) { openMenu(contextChannel()); e.preventDefault(); } return; }
-    if (k === KEY.GREEN && mode === 'pip') { cyclePip(); e.preventDefault(); return; }
+    if (k === KEY.GREEN && mode === 'pip') { startPipMove(); e.preventDefault(); return; }
     if (k === KEY.YELLOW || k === KEY.GREEN) { var cf = contextChannel(); if (cf) toggleFav(cf); e.preventDefault(); return; }
     if (k === KEY.RED) { var ch = contextChannel(); if (ch) { if (isHidden(ch)) unhideChannel(ch); else hideChannel(ch); } e.preventDefault(); return; }
     if (k === KEY.BLUE || (k === KEY.P && !typing)) {
@@ -1749,6 +1752,63 @@
     if (!PIP_POS) return;
     PIP_POS.forEach(function (c) { p.classList.toggle('pos-' + c, c === pipPos); });
     if (!pipDrag) { p.style.transition = ''; p.style.transform = ''; }
+    applyPipFree();
+  }
+
+  // ---------- TV: mover el PiP libremente (a cualquier punto de la pantalla) ----------
+  // pipFree = posición guardada como fracción del espacio libre (0..1), así sirve en cualquier tamaño de pantalla
+  var pipFree = null, pipMoving = false, pipMoveTimer = null;
+  try { pipFree = JSON.parse(store('pipFree') || 'null'); } catch (e) { pipFree = null; }
+  function pipArea() { return { W: document.documentElement.clientWidth || window.innerWidth, H: document.documentElement.clientHeight || window.innerHeight }; }
+  function applyPipFree() {
+    var p = $('player');
+    if (IS_PHONE || mode !== 'pip' || !pipFree) { p.style.left = p.style.top = p.style.right = p.style.bottom = ''; return; }
+    var B = pipArea(), w = p.offsetWidth, h = p.offsetHeight;
+    p.style.right = 'auto'; p.style.bottom = 'auto';
+    p.style.left = Math.round(Math.max(0, Math.min(1, pipFree.x)) * (B.W - w)) + 'px';
+    p.style.top = Math.round(Math.max(0, Math.min(1, pipFree.y)) * (B.H - h)) + 'px';
+  }
+  function pipFreeFromRect(r) {
+    var B = pipArea();
+    pipFree = { x: (B.W - r.width) > 0 ? r.left / (B.W - r.width) : 0, y: (B.H - r.height) > 0 ? r.top / (B.H - r.height) : 0 };
+  }
+  function startPipMove() {
+    if (mode !== 'pip') return;
+    if (IS_PHONE) { cyclePip(); return; }
+    if (!pipFree) pipFreeFromRect($('player').getBoundingClientRect());
+    pipMoving = true;
+    $('player').classList.add('moving');
+    applyPipFree();
+    toast('Mover ventana: ◀▲▼▶ (mantén para ir más rápido) · OK o ATRÁS para dejarla ahí');
+    bumpPipMove();
+  }
+  function bumpPipMove() { clearTimeout(pipMoveTimer); pipMoveTimer = setTimeout(function () { if (pipMoving) stopPipMove(); }, 15000); }
+  function stopPipMove() {
+    if (!pipMoving) return;
+    pipMoving = false; clearTimeout(pipMoveTimer);
+    var p = $('player'); p.classList.remove('moving'); p.style.transition = '';
+    store('pipFree', JSON.stringify(pipFree));
+    toast('Ventana chica ubicada aquí');
+  }
+  function pipNudge(dx, dy, fast) {
+    var p = $('player'), B = pipArea(), w = p.offsetWidth, h = p.offsetHeight, step = fast ? 64 : 28;
+    var x = pipFree.x * (B.W - w) + dx * step, y = pipFree.y * (B.H - h) + dy * step;
+    x = Math.max(0, Math.min(B.W - w, x)); y = Math.max(0, Math.min(B.H - h, y));
+    pipFree = { x: (B.W - w) > 0 ? x / (B.W - w) : 0, y: (B.H - h) > 0 ? y / (B.H - h) : 0 };
+    p.style.transition = 'left .09s linear, top .09s linear';
+    applyPipFree();
+    bumpPipMove();
+  }
+  function pipMoveKey(k, e) {                     // teclas en modo mover; true = usada
+    if (!pipMoving) return false;
+    if (mode !== 'pip') { stopPipMove(); return false; }
+    var fast = !!(e && e.repeat);
+    if (k === KEY.LEFT) pipNudge(-1, 0, fast);
+    else if (k === KEY.RIGHT) pipNudge(1, 0, fast);
+    else if (k === KEY.UP) pipNudge(0, -1, fast);
+    else if (k === KEY.DOWN) pipNudge(0, 1, fast);
+    else if (k === KEY.ENTER || k === KEY.GREEN || k === KEY.BACK || k === KEY.ESC || k === KEY.BACKSPACE) stopPipMove();
+    return true;
   }
   function setPipPos(c, fromRect) {
     var p = $('player');
@@ -1794,6 +1854,12 @@
     $('player').classList.remove('dragging');
     if (!d.moved) return;                  // fue un toque: lo maneja el click
     pipDragEnd = Date.now();
+    if (!IS_PHONE) {                           // TV: queda exactamente donde se suelta
+      pipFreeFromRect({ left: d.r.left + d.dx, top: d.r.top + d.dy, width: d.r.width, height: d.r.height });
+      store('pipFree', JSON.stringify(pipFree));
+      var pp = $('player'); pp.style.transition = 'none'; pp.style.transform = ''; applyPipFree();
+      return;
+    }
     var cx = (d.r.left + d.r.right) / 2 + d.dx, cy = (d.r.top + d.r.bottom) / 2 + d.dy;
     var c = (cy < window.innerHeight / 2 ? 't' : 'b') + (cx < window.innerWidth / 2 ? 'l' : 'r');
     setPipPos(c, { left: d.r.left + d.dx, top: d.r.top + d.dy });

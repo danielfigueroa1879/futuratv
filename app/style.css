@@ -830,3 +830,12 @@ html:not(.phone) .srow { margin: 2px 14px; padding: 0 16px; border-left: 0; bord
 }
 
 .phone #player.has-prev .srow.sel .nm { margin-right: 80px; }
+
+/* TV: modo mover PiP (libre) */
+html:not(.phone) .player.pip.moving { box-shadow: 0 0 0 4px #fff, 0 0 30px rgba(255,255,255,.6), 0 20px 60px rgba(0,0,0,.8); }
+html:not(.phone) .player.pip.moving::after {
+  content: '◀ ▲ ▼ ▶  mover  ·  OK listo'; position: absolute; left: 50%; top: 14px; transform: translateX(-50%); z-index: 8;
+  font-size: 20px; font-weight: 700; color: #fff; background: rgba(8,11,20,.75); padding: 8px 18px; border-radius: 20px; white-space: nowrap;
+  pointer-events: none;
+}
+html:not(.phone) .player.pip.moving .pip-label { opacity: .25; }
