@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.2.1';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.2.2';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -1046,7 +1046,9 @@
     return g;
   }
   // TV: la lista puede ser vertical (lateral) u horizontal (carrusel abajo, con controles de tiempo)
-  var LIST_H = store('listMode') === 'h', hbFocus = -1;   // -1 = tarjetas · 0..n = botón de tiempo
+  // Por defecto: carrusel horizontal (al actualizar se pasa una vez a horizontal; luego se puede cambiar en Ajustes)
+  if (!store('listModeDefH')) { store('listMode', 'h'); store('listModeDefH', '1'); }
+  var LIST_H = store('listMode') !== 'v', hbFocus = -1;   // -1 = tarjetas · 0..n = botón de tiempo
   function openSide() {
     sideOpen = true; hbFocus = -1;
     sideGroup = sideGroups().indexOf(zapGroup) >= 0 ? zapGroup : 'Todos';
