@@ -45,7 +45,7 @@ public class WebSiteActivity extends Activity {
         float x, y, s;
         CursorView(Context c) {
             super(c);
-            s = c.getResources().getDisplayMetrics().density * 1.6f;
+            s = c.getResources().getDisplayMetrics().density * 0.9f;      // cursor chico
             fill.setColor(Color.WHITE);
             line.setColor(Color.BLACK); line.setStyle(Paint.Style.STROKE); line.setStrokeWidth(s * 1.4f);
             line.setStrokeJoin(Paint.Join.ROUND);
@@ -89,7 +89,14 @@ public class WebSiteActivity extends Activity {
         CookieManager cm = CookieManager.getInstance();
         cm.setAcceptCookie(true);
         if (Build.VERSION.SDK_INT >= 21) cm.setAcceptThirdPartyCookies(web, true);   // reproductores incrustados del sitio
-        web.setWebViewClient(new WebViewClient());
+        web.setWebViewClient(new WebViewClient() {
+            @Override public void onPageFinished(WebView v, String u) {
+                // TV: el sitio se arma como en un computador (1920 de ancho) en vez de la versión «grande»
+                if (tv) v.evaluateJavascript("(function(){var m=document.querySelector('meta[name=viewport]');"
+                        + "if(!m){m=document.createElement('meta');m.name='viewport';document.head.appendChild(m);}"
+                        + "if(m.content.indexOf('width=1920')<0)m.setAttribute('content','width=1920');})()", null);
+            }
+        });
         web.setWebChromeClient(new WebChromeClient());
 
         FrameLayout root = new FrameLayout(this);
@@ -137,7 +144,9 @@ public class WebSiteActivity extends Activity {
                     || k == KeyEvent.KEYCODE_DPAD_RIGHT || k == KeyEvent.KEYCODE_DPAD_UP || k == KeyEvent.KEYCODE_DPAD_DOWN
                     || super.dispatchKeyEvent(e);
         }
-        float d = getResources().getDisplayMetrics().density, st = (e.getRepeatCount() > 0 ? 26 : 10) * d;
+        // más rápido: un toque = 18, mantenido acelera hasta 90 (en puntos de pantalla)
+        int rc = e.getRepeatCount();
+        float d = getResources().getDisplayMetrics().density, st = (rc == 0 ? 18 : Math.min(90, 30 + rc * 6)) * d;
         switch (k) {
             case KeyEvent.KEYCODE_DPAD_LEFT:  moveCursor(-st, 0); return true;
             case KeyEvent.KEYCODE_DPAD_RIGHT: moveCursor(st, 0); return true;
