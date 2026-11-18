@@ -38,30 +38,26 @@ public class WebSiteActivity extends Activity {
     private boolean tv;
     private float cx, cy;
 
-    /** Flecha de cursor dibujada (sin imágenes). */
+    /** Flecha de cursor: vista chica (del tamaño de la flecha) que solo se desplaza; no redibuja la pantalla. */
     static class CursorView extends View {
-        final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), line = new Paint(Paint.ANTI_ALIAS_FLAG);
+        final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), line = new Paint(Paint.ANTI_ALIAS_FLAG), halo = new Paint(Paint.ANTI_ALIAS_FLAG);
         final Path arrow = new Path();
-        float x, y, s;
+        final float s;
         CursorView(Context c) {
             super(c);
-            s = c.getResources().getDisplayMetrics().density * 0.9f;      // cursor chico
+            s = c.getResources().getDisplayMetrics().density * 0.9f;
             fill.setColor(Color.WHITE);
-            line.setColor(Color.BLACK); line.setStyle(Paint.Style.STROKE); line.setStrokeWidth(s * 1.4f);
-            line.setStrokeJoin(Paint.Join.ROUND);
-            setLayerType(View.LAYER_TYPE_SOFTWARE, null);
-            fill.setShadowLayer(6 * s, 0, 2 * s, 0x99000000);
-        }
-        @Override protected void onDraw(Canvas c) {
-            arrow.reset();
-            arrow.moveTo(x, y);
-            arrow.lineTo(x + 7.5f * s, y + 19 * s);
-            arrow.lineTo(x + 10.1f * s, y + 11.6f * s);
-            arrow.lineTo(x + 17.5f * s, y + 9 * s);
+            line.setColor(Color.BLACK); line.setStyle(Paint.Style.STROKE); line.setStrokeWidth(s * 1.4f); line.setStrokeJoin(Paint.Join.ROUND);
+            halo.setColor(0x66000000); halo.setStyle(Paint.Style.STROKE); halo.setStrokeWidth(s * 4f); halo.setStrokeJoin(Paint.Join.ROUND);
+            float o = 3 * s;                                         // margen para el contorno
+            arrow.moveTo(o, o);
+            arrow.lineTo(o + 7.5f * s, o + 19 * s);
+            arrow.lineTo(o + 10.1f * s, o + 11.6f * s);
+            arrow.lineTo(o + 17.5f * s, o + 9 * s);
             arrow.close();
-            c.drawPath(arrow, fill);
-            c.drawPath(arrow, line);
         }
+        int size() { return (int) Math.ceil(24 * s); }
+        @Override protected void onDraw(Canvas c) { c.drawPath(arrow, halo); c.drawPath(arrow, fill); c.drawPath(arrow, line); }
     }
 
     private boolean isTv() {
@@ -79,6 +75,7 @@ public class WebSiteActivity extends Activity {
         tv = isTv();
         web = new WebView(this);
         web.setBackgroundColor(Color.BLACK);
+        web.setLayerType(View.LAYER_TYPE_HARDWARE, null);              // video y página con la tarjeta gráfica
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
@@ -102,7 +99,7 @@ public class WebSiteActivity extends Activity {
         FrameLayout root = new FrameLayout(this);
         root.addView(web, new FrameLayout.LayoutParams(-1, -1));
         cursor = new CursorView(this);
-        root.addView(cursor, new FrameLayout.LayoutParams(-1, -1));
+        root.addView(cursor, new FrameLayout.LayoutParams(cursor.size(), cursor.size()));
         cursor.setVisibility(tv ? View.VISIBLE : View.GONE);
         setContentView(root);
 
@@ -121,7 +118,8 @@ public class WebSiteActivity extends Activity {
         cy = Math.max(0, Math.min(h - 2, cy + dy));
         if (dy > 0 && cy >= h - 4) web.scrollBy(0, (int) (h * 0.25f));      // en el borde: desplaza la página
         if (dy < 0 && cy <= 2) web.scrollBy(0, (int) (-h * 0.25f));
-        cursor.x = cx; cursor.y = cy; cursor.invalidate();
+        float o = 3 * cursor.s;
+        cursor.setTranslationX(cx - o); cursor.setTranslationY(cy - o);   // solo se mueve (sin redibujar)
     }
 
     private void touch(int action, long down, float x, float y) {
