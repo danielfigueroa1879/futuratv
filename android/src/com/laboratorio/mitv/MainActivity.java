@@ -670,6 +670,18 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public boolean isTV() { return isTv(); }
 
+        /** Abre un sitio en su propia pantalla (cookies normales: el sitio recuerda lo elegido). */
+        @JavascriptInterface
+        public boolean openSite(String url) {
+            if (url == null || !url.startsWith("https://")) return false;
+            runOnUiThread(() -> {
+                Intent i = new Intent(MainActivity.this, WebSiteActivity.class);
+                i.putExtra("url", url);
+                startActivity(i);
+            });
+            return true;
+        }
+
         /** Cursor del control remoto: un toque en (x, y) dado como fracción de la pantalla (0..1). */
         @JavascriptInterface
         public void tapAt(final float xf, final float yf) {

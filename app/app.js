@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.3.0';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.3.1';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -225,6 +225,22 @@
   function openWebSite(url, name) {
     try { stopPlayer(); } catch (e) { }
     try { wallTeardown(); sidePrevStop(); } catch (e) { }
+    // Lo ideal: abrirlo en su propia pantalla, como un navegador (así el sitio guarda los canales elegidos)
+    if (IS_ANDROID && typeof window.Android.openSite === 'function') {
+      var ok = false; try { ok = window.Android.openSite(url); } catch (e) { ok = false; }
+      if (ok) return;
+    }
+    if (!IS_ANDROID) {
+      var tried = false;
+      lunaCall('luna://com.webos.applicationManager/launch', { id: 'com.webos.app.browser', params: { target: url } }, function (res) {
+        if (tried) return; tried = true;
+        if (res.notWebOS) window.open(url, '_blank');            // navegador normal (PC / celular sin la app)
+        else if (!res.returnValue) toast('No se pudo abrir el navegador del TV');
+      });
+      return;
+    }
+    // APK antigua: se abre incrustado (puede que no recuerde los canales elegidos)
+    toast('Para elegir y guardar canales en este sitio instala la nueva APK de FuturaTV');
     webOpen = true;
     $('webSite').classList.remove('hidden');
     $('webFrame').src = url;
