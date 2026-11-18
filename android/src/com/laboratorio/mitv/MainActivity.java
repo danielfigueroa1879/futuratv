@@ -16,10 +16,7 @@ import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
 import android.util.Rational;
-import android.os.SystemClock;
-import android.view.InputDevice;
 import android.view.KeyEvent;
-import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
@@ -621,13 +618,6 @@ public class MainActivity extends Activity {
             + ".then(function(t){if(t==='OK'){m.textContent='✅ Enviado: míralo en la TV';document.getElementById('u').value='';}else m.textContent=t;})"
             + ".catch(function(){m.textContent='No se pudo conectar con la TV (¿mismo Wi-Fi?)';});};</script></body></html>";
 
-    private void touch(int action, long downTime, long time, float x, float y) {
-        MotionEvent ev = MotionEvent.obtain(downTime, time, action, x, y, 0);
-        ev.setSource(InputDevice.SOURCE_TOUCHSCREEN);
-        web.dispatchTouchEvent(ev);
-        ev.recycle();
-    }
-
     /** Funciones disponibles en JavaScript como window.Android */
     private class Bridge {
         @JavascriptInterface
@@ -669,44 +659,6 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public boolean isTV() { return isTv(); }
-
-        /** Abre un sitio en su propia pantalla (cookies normales: el sitio recuerda lo elegido). */
-        @JavascriptInterface
-        public boolean openSite(String url) {
-            if (url == null || !url.startsWith("https://")) return false;
-            runOnUiThread(() -> {
-                Intent i = new Intent(MainActivity.this, WebSiteActivity.class);
-                i.putExtra("url", url);
-                startActivity(i);
-            });
-            return true;
-        }
-
-        /** Cursor del control remoto: un toque en (x, y) dado como fracción de la pantalla (0..1). */
-        @JavascriptInterface
-        public void tapAt(final float xf, final float yf) {
-            runOnUiThread(() -> {
-                float x = xf * web.getWidth(), y = yf * web.getHeight();
-                long t = SystemClock.uptimeMillis();
-                touch(MotionEvent.ACTION_DOWN, t, t, x, y);
-                web.postDelayed(() -> touch(MotionEvent.ACTION_UP, t, SystemClock.uptimeMillis(), x, y), 60);
-            });
-        }
-
-        /** Desplaza la página: arrastre vertical desde (x, y) de dyf (fracción de la altura). */
-        @JavascriptInterface
-        public void swipeAt(final float xf, final float yf, final float dyf) {
-            runOnUiThread(() -> {
-                final float x = xf * web.getWidth(), y0 = yf * web.getHeight(), dy = dyf * web.getHeight();
-                final long t = SystemClock.uptimeMillis();
-                touch(MotionEvent.ACTION_DOWN, t, t, x, y0);
-                for (int i = 1; i <= 6; i++) {
-                    final int k = i;
-                    web.postDelayed(() -> touch(MotionEvent.ACTION_MOVE, t, SystemClock.uptimeMillis(), x, y0 + dy * k / 6f), 16L * i);
-                }
-                web.postDelayed(() -> touch(MotionEvent.ACTION_UP, t, SystemClock.uptimeMillis(), x, y0 + dy), 16L * 7);
-            });
-        }
 
         @JavascriptInterface
         public boolean voiceSearch() {

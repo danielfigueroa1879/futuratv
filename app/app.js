@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.3.3';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.3.4';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -27,7 +27,6 @@
     if (vp) vp.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover');
   }
   var APPS = [
-    { name: 'Mosaico web',  embed: 'https://www.viendotele.cl/', color: '#14532d', glyph: '▦' },   // se abre dentro de FuturaTV
     { name: 'YouTube',      id: 'youtube.leanback.v4',        color: '#ff0033', glyph: '▶', web: 'https://www.youtube.com/tv',
       android: ['com.google.android.youtube.tv', 'com.amazon.firetv.youtube', 'com.google.android.youtube'] },
     { name: 'Netflix',      id: 'netflix',                    color: '#b20710', glyph: 'N',
@@ -110,7 +109,6 @@
     bridge.call(uri, JSON.stringify(params || {}));
   }
   function launchApp(app) {
-    if (app.embed) { openWebSite(app.embed, app.name); return; }
     if (IS_ANDROID) {
       var ok = false;
       try { ok = window.Android.launchApp(JSON.stringify(app.android || [])); } catch (e) { ok = false; }
@@ -218,77 +216,6 @@
     if (window.webOS && window.webOS.platformBack) { try { window.close(); } catch (e) { } window.webOS.platformBack(); return; }
     try { window.close(); } catch (e) { }
     toast('Cierra la pestaña del navegador para salir');
-  }
-
-  // ---------- Sitio web dentro de FuturaTV (p. ej. viendotele.cl), con cursor para el control remoto ----------
-  var webOpen = false, cur = { x: 960, y: 540 }, curHideTimer = null;
-  function openWebSite(url, name) {
-    try { stopPlayer(); } catch (e) { }
-    try { wallTeardown(); sidePrevStop(); } catch (e) { }
-    // Lo ideal: abrirlo en su propia pantalla, como un navegador (así el sitio guarda los canales elegidos)
-    if (IS_ANDROID && typeof window.Android.openSite === 'function') {
-      var ok = false; try { ok = window.Android.openSite(url); } catch (e) { ok = false; }
-      if (ok) return;
-    }
-    if (!IS_ANDROID) {
-      var tried = false;
-      lunaCall('luna://com.webos.applicationManager/launch', { id: 'com.webos.app.browser', params: { target: url } }, function (res) {
-        if (tried) return; tried = true;
-        if (res.notWebOS) window.open(url, '_blank');            // navegador normal (PC / celular sin la app)
-        else if (!res.returnValue) toast('No se pudo abrir el navegador del TV');
-      });
-      return;
-    }
-    // APK antigua: se abre incrustado (puede que no recuerde los canales elegidos)
-    toast('Para elegir y guardar canales en este sitio instala la nueva APK de FuturaTV');
-    webOpen = true;
-    $('webSite').classList.remove('hidden');
-    $('webFrame').src = url;
-    $('webHint').textContent = IS_PHONE ? name + ' · toca «✕» o ATRÁS para volver a FuturaTV'
-      : name + ' · ◀▲▼▶ mover el cursor · OK clic · ATRÁS volver a FuturaTV';
-    cur = { x: window.innerWidth / 2, y: window.innerHeight / 2 }; drawCursor();
-    if (!IS_PHONE && !(IS_ANDROID && typeof window.Android.tapAt === 'function') && IS_ANDROID)
-      toast('Para hacer clic con el cursor instala la nueva APK de FuturaTV');
-  }
-  function closeWebSite() {
-    if (!webOpen) return false;
-    webOpen = false;
-    $('webFrame').src = 'about:blank';
-    $('webSite').classList.add('hidden');
-    return true;
-  }
-  function drawCursor() {
-    var c = $('webCursor');
-    c.style.transform = 'translate(' + Math.round(cur.x) + 'px,' + Math.round(cur.y) + 'px)';
-    c.classList.remove('idle'); clearTimeout(curHideTimer);
-    curHideTimer = setTimeout(function () { c.classList.add('idle'); }, 6000);
-  }
-  function webKey(k, e) {                          // teclas con el sitio abierto (TV); true = usada
-    if (!webOpen) return false;
-    var W = window.innerWidth, H = window.innerHeight, st = e && e.repeat ? 46 : 18;
-    if (k === KEY.LEFT) cur.x -= st; else if (k === KEY.RIGHT) cur.x += st;
-    else if (k === KEY.UP) { cur.y -= st; if (cur.y < 4) webScroll(-1); }
-    else if (k === KEY.DOWN) { cur.y += st; if (cur.y > H - 6) webScroll(1); }
-    else if (k === KEY.ENTER) { webTap(); return true; }
-    else if (k === KEY.CH_UP) { webScroll(-1); return true; } else if (k === KEY.CH_DOWN) { webScroll(1); return true; }
-    else return false;
-    cur.x = Math.max(0, Math.min(W - 2, cur.x)); cur.y = Math.max(0, Math.min(H - 2, cur.y));
-    drawCursor();
-    return true;
-  }
-  function webTap() {
-    var c = $('webCursor'); c.classList.add('click'); setTimeout(function () { c.classList.remove('click'); }, 180);
-    if (IS_ANDROID && typeof window.Android.tapAt === 'function') {
-      try { window.Android.tapAt(cur.x / window.innerWidth, cur.y / window.innerHeight); } catch (e) { }
-    } else toast('Para hacer clic con el cursor instala la nueva APK de FuturaTV');
-  }
-  var webScrollAt = 0;
-  function webScroll(dir) {
-    if (Date.now() - webScrollAt < 450) return;     // como mucho un desplazamiento cada medio segundo
-    webScrollAt = Date.now();
-    if (IS_ANDROID && typeof window.Android.swipeAt === 'function') {
-      try { window.Android.swipeAt(0.5, 0.5, dir > 0 ? -0.35 : 0.35); } catch (e) { }
-    }
   }
 
   // ---------- Navegación con control remoto ----------
@@ -1621,7 +1548,6 @@
 
   // Devuelve true si manejó ATRÁS; false si ya estamos en el inicio (la app debe cerrarse).
   function goBack() {
-    if (closeWebSite()) return true;                    // sitio web abierto: volver a FuturaTV
     if (pipMoving) { stopPipMove(); return true; }       // ATRÁS en modo mover: deja la ventana ahí
     if (wallBig) { wallCollapse(); return true; }        // muro de favoritos: el agrandado vuelve a su lugar
     if (listening) { cancelVoice(); return true; }
@@ -1651,7 +1577,6 @@
     document.documentElement.classList.toggle('syspip', !!on);
     if (!on && mode === 'full') showTools();
   };
-  $('webClose').addEventListener('click', function (e) { e.stopPropagation(); closeWebSite(); });
   window.mitvBack = goBack;                                         // usado por Android (tecla ATRÁS)
   window.mitvPause = function () { if (mode !== 'none' && !listening) stopPlayer(); wallTeardown(); }; // al salir a otra app
   window.mitvResume = function () { wallSync(); };
@@ -1671,8 +1596,6 @@
       if (k === KEY.BACK || k === KEY.ESC || k === KEY.BACKSPACE || k === KEY.ENTER) cancelVoice();
       e.preventDefault(); return;
     }
-    if (webOpen && (k === KEY.BACK || k === KEY.ESC)) { closeWebSite(); e.preventDefault(); return; }
-    if (webOpen) { if (!IS_PHONE && webKey(k, e)) e.preventDefault(); return; }   // sitio abierto: el control mueve el cursor
     if (pipMoving && pipMoveKey(k, e)) { e.preventDefault(); return; }      // modo mover PiP
     if (wallBig && !menuOpen && k !== KEY.BACK && k !== KEY.ESC && k !== KEY.BACKSPACE) {
       if (wallKey(k)) { e.preventDefault(); return; }
