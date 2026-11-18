@@ -132,3 +132,14 @@ ares-launch --device mitv com.laboratorio.mitv
 - **Apps**: lista `APPS` al inicio de `app/app.js`. Si una app no está instalada, aparece un aviso.
 - **Otros países**: en Ajustes usa `https://iptv-org.github.io/iptv/countries/XX.m3u` (ar, mx, es, co, pe…), o cualquier lista M3U a la que tengas acceso legal.
 - Algunos canales de la lista pública pueden estar caídos o bloqueados por región; con ▲▼ pasas al siguiente.
+
+## Clave de firma del APK (importante)
+
+Los APK de FuturaTV (desde la 1.7.0) están firmados con la clave `android/mitv.keystore`
+(alias `mitv`, huella SHA-256 `0E:96:4C:40:48:66:62:F9:14:1F:E1:44:59:70:72:CC:4B:AB:44:DC:89:A9:78:E2:DE:82:FB:C0:5E:15:C6:30`).
+
+- **No se sube a GitHub** (el repositorio es público; el `.gitignore` la deja fuera). Guárdala en un lugar privado
+  (pendrive, Google Drive o similar) con el nombre `FuturaTV-clave-firma.keystore`.
+- Para armar un APK nuevo que se **instale encima** del que ya está en la TV (sin desinstalar ni perder favoritos),
+  copia ese archivo a `android/mitv.keystore` antes de correr `./build-apk.sh`.
+- Si se pierde, los APK nuevos tendrán otra firma: habrá que desinstalar la app de la TV y se perderán los favoritos.
