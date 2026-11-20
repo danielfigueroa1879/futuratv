@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.3.4';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.4.0';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -196,7 +196,9 @@
         var q = window.qrcode(0, 'M'); q.addData(url); q.make();
         $('linkQr').innerHTML = q.createSvgTag({ cellSize: 6, margin: 2, scalable: true });
       } catch (e) { $('linkQr').innerHTML = ''; }
-      $('linkTxt').innerHTML = 'Escanea con la cámara del celular (conectado al <b>mismo Wi-Fi</b>), pega el enlace y toca «Enviar a la TV».<br>O abre en el celular: <b>' + escapeHtml(url) + '</b>';
+      $('linkTxt').innerHTML = 'Escanea este código con la cámara del celular (conectado al <b>mismo Wi-Fi</b>): se abre el <b>control remoto</b>.<br>' +
+        'O abre en el navegador del celular: <b>' + escapeHtml(url) + '</b><br>Para cortar la conexión: «Desconectar celulares» (el código cambia).';
+      store('remoteOn', '1'); updateRemoteInfo();
       $('linkBox').classList.remove('hidden');
       if (focused) setFocus(focused);
       try { $('linkBox').scrollIntoView({ block: 'end' }); } catch (e) { }   // que el QR se vea completo
@@ -204,6 +206,71 @@
     if (window.qrcode) draw();
     else { var sc = document.createElement('script'); sc.src = 'lib/qrcode.js'; sc.onload = draw; sc.onerror = draw; document.body.appendChild(sc); }
   }
+  // ---------- Control remoto desde el celular (misma red Wi-Fi) ----------
+  var remoteRes = [];
+  function updateRemoteInfo() {
+    var el = $('remoteInfo'); if (!el) return;
+    if (!IS_ANDROID || typeof window.Android.remoteCount !== 'function') { el.textContent = IS_ANDROID ? 'Para esto instala la nueva APK de FuturaTV.' : ''; return; }
+    var n = 0; try { n = window.Android.remoteCount(); } catch (e) { }
+    el.textContent = store('remoteOn') === '1' ? (n ? '📱 Celulares conectados: ' + n : 'Esperando un celular… (escanea el código)') : 'Ningún celular conectado.';
+  }
+  function remoteOff() {
+    try { window.Android.remoteDisconnectAll(); } catch (e) { }
+    store('remoteOn', '0');
+    $('linkBox').classList.add('hidden'); updateRemoteInfo();
+    toast('📱 Celulares desconectados. El código anterior ya no sirve.');
+  }
+  function remoteKey(code) {
+    document.dispatchEvent(new KeyboardEvent('keydown', { keyCode: code, which: code, bubbles: true }));
+    document.dispatchEvent(new KeyboardEvent('keyup', { keyCode: code, which: code, bubbles: true }));
+  }
+  function pushRemoteState() {
+    if (!IS_ANDROID || typeof window.Android.setRemoteState !== 'function' || store('remoteOn') !== '1' || !channels.length) return;
+    var st = { now: nowCh ? nowCh.name : '', mode: mode, muted: !!$('video').muted,
+      favs: listFor(FAV_GROUP).map(function (c) { return { name: c.name, yt: !!c.yt }; }),
+      res: remoteRes.map(function (c) { return c.name; }) };
+    try { window.Android.setRemoteState(JSON.stringify(st)); } catch (e) { }
+  }
+  setInterval(function () { pushRemoteState(); if (currentView === 'settings') updateRemoteInfo(); }, 2000);
+  window.mitvRemoteEvent = function (ev) {
+    if (ev === 'hello') toast('📱 Celular conectado como control remoto');
+    else if (ev === 'bye') toast('📱 Un celular se desconectó');
+    pushRemoteState(); updateRemoteInfo();
+  };
+  window.mitvRemote = function (c, v) {             // órdenes del celular
+    if (c === 'key') {
+      if (v === 'back') { goBack(); return; }
+      var code = { up: KEY.UP, down: KEY.DOWN, left: KEY.LEFT, right: KEY.RIGHT, ok: KEY.ENTER }[v];
+      if (code) remoteKey(code);
+      return;
+    }
+    if (c === 'ch') {
+      if (mode !== 'none') zap(+v < 0 ? -1 : 1);
+      else { var fl0 = listFor(FAV_GROUP).filter(function (x) { return !x.yt; }); if (fl0.length) playChannel(fl0, 0, FAV_GROUP, 'full'); }
+      pushRemoteState(); return;
+    }
+    if (c === 'mute') { var vd = $('video'); vd.muted = !vd.muted; toast(vd.muted ? '🔇 Sin sonido' : '🔊 Con sonido'); pushRemoteState(); return; }
+    if (c === 'screen') { if (mode === 'pip') setMode('full'); else if (mode === 'full') { if (!wallReturn()) minimize(); } pushRemoteState(); return; }
+    if (c === 'play') {
+      var fl = listFor(FAV_GROUP), i = +v;
+      if (fl[i]) { if (sideOpen) closeSide(); playChannel(fl, i, FAV_GROUP, 'full'); }
+      pushRemoteState(); return;
+    }
+    if (c === 'search') {
+      if (mode === 'full') minimize();
+      showView('live'); if (!searchOpen) openSearch();
+      searchQuery = String(v || '').toLowerCase(); $('searchInput').value = searchQuery; updateSearch();
+      remoteRes = filtered.filter(function (x) { return !x.isCountry; }).slice(0, 25);
+      pushRemoteState(); return;
+    }
+    if (c === 'playres') { var j = +v; if (remoteRes[j]) playChannel(remoteRes, j, SEARCH_GROUP, 'full'); pushRemoteState(); return; }
+    if (c === 'yt') { window.mitvRemoteLink(v); return; }
+  };
+  // Si había un celular conectado, la TV vuelve a quedar lista para él al abrir la app
+  setTimeout(function () {
+    if (store('remoteOn') === '1' && IS_ANDROID && typeof window.Android.startLinkServer === 'function') { try { window.Android.startLinkServer(); } catch (e) { } }
+  }, 1500);
+
   window.mitvRemoteLink = function (u) {               // llega un enlace enviado desde el celular
     if (!ytId(u)) { toast('Llegó un enlace que no es de YouTube: ' + String(u).slice(0, 60)); return; }
     $('ytInput').value = u; ytAdd();
@@ -1476,7 +1543,8 @@
     if (el.id === 'pipMoveBtn') { startPipMove(); return; }
     if (el.id === 'exitBtn') { exitApp(); return; }
     if (el.id === 'ytAdd') { ytAdd(); return; }
-    if (el.id === 'linkPhone') { showLinkQr(); return; }
+    if (el.id === 'remoteOn') { showLinkQr(); return; }
+    if (el.id === 'remoteOff') { remoteOff(); return; }
     if (el.id === 'wallToggle') { wallToggle(); return; }
     if (el.classList.contains('wt')) { wallActivate(el); return; }
     if (el.id === 'searchBtn') { if (searchOpen) closeSearch(false); else openSearch(); return; }
@@ -1542,7 +1610,7 @@
     $('listMode').textContent = LIST_H ? '▭ Horizontal (carrusel abajo) · cambiar a vertical' : '▯ Vertical (lista al costado) · cambiar a horizontal';
   }
   function updateSettingsInfo() {
-    updateListModeBtn(); updatePrevBtn(); ytInfo();
+    updateListModeBtn(); updatePrevBtn(); ytInfo(); updateRemoteInfo();
     $('favInfo').textContent = Object.keys(favs).length + ' favoritos · ' + Object.keys(hiddenSet).length + ' canales ocultos';
   }
 

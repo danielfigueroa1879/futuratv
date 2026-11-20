@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#081033">
+<title>FuturaTV · Control remoto</title>
+<style>
+  :root { --bg: #081033; --card: #121a3a; --line: rgba(255,255,255,.12); --txt: #e8ecf5; --mut: #9aa6c2; --acc: #8b5cf6; --cy: #22d3ee; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--txt); font-family: system-ui, -apple-system, Roboto, sans-serif; }
+  body { padding: calc(env(safe-area-inset-top) + 14px) 16px calc(env(safe-area-inset-bottom) + 24px);
+    background-image: radial-gradient(ellipse at 0% 0%, #0b3a5c 0%, transparent 50%), radial-gradient(ellipse at 100% 100%, #3b1670 0%, transparent 55%);
+    min-height: 100vh; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  header b { font-size: 20px; letter-spacing: .5px; }
+  #st { font-size: 13px; color: var(--mut); display: flex; align-items: center; gap: 6px; }
+  #st i { width: 9px; height: 9px; border-radius: 50%; background: #64748b; display: inline-block; }
+  #st.on i { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
+  #now { margin: 12px 0 16px; padding: 12px 14px; border-radius: 14px; background: var(--card); box-shadow: inset 0 0 0 1px var(--line);
+    font-size: 15px; color: var(--mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #now b { color: var(--txt); }
+  .pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; max-width: 300px; margin: 0 auto 14px; }
+  .pad button, .row button, .btn { border: 0; color: var(--txt); background: var(--card); box-shadow: inset 0 0 0 1px var(--line);
+    border-radius: 18px; font: inherit; font-size: 22px; height: 70px; touch-action: manipulation; user-select: none; }
+  .pad button:active, .row button:active, .btn:active, .item:active { transform: scale(.94); background: #1d2756; }
+  .pad .ok { background: linear-gradient(135deg, rgba(34,211,238,.75), rgba(139,92,246,.85)); font-weight: 800; font-size: 20px; border-radius: 50%; }
+  .pad .sp { visibility: hidden; }
+  .row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 18px; }
+  .row button { height: 54px; font-size: 18px; border-radius: 14px; }
+  .row button small { display: block; font-size: 10px; color: var(--mut); margin-top: 2px; }
+  h3 { font-size: 15px; color: var(--mut); margin: 18px 4px 8px; font-weight: 600; }
+  .list { display: grid; gap: 8px; }
+  .item { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 14px; background: var(--card);
+    box-shadow: inset 0 0 0 1px var(--line); font-size: 15px; border: 0; color: var(--txt); text-align: left; font-family: inherit; width: 100%; }
+  .item.now { box-shadow: inset 0 0 0 2px var(--cy); }
+  .item span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .item em { font-style: normal; font-size: 12px; color: var(--mut); }
+  .empty { color: var(--mut); font-size: 13px; padding: 4px; }
+  .field { display: flex; gap: 8px; }
+  .field input { flex: 1; min-width: 0; font: inherit; font-size: 16px; padding: 13px 14px; border-radius: 14px; border: 0;
+    background: var(--card); color: #fff; box-shadow: inset 0 0 0 1px var(--line); }
+  .field .btn { height: auto; font-size: 15px; font-weight: 700; padding: 0 16px; background: var(--acc); }
+  .bye { margin-top: 26px; width: 100%; height: 52px; font-size: 16px; font-weight: 700; color: #fecaca; background: rgba(239,68,68,.15);
+    box-shadow: inset 0 0 0 1px rgba(239,68,68,.45); }
+  .off { position: fixed; inset: 0; z-index: 9; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+    background: rgba(8,16,51,.97); padding: 30px; text-align: center; }
+  .off p { color: var(--mut); margin: 0; line-height: 1.5; }
+  .off .btn { height: 52px; padding: 0 26px; font-size: 16px; font-weight: 700; background: var(--acc); }
+  .hidden { display: none !important; }
+  .toast { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 20px); transform: translateX(-50%); background: #fff; color: #0b0f1a;
+    padding: 10px 16px; border-radius: 12px; font-size: 14px; opacity: 0; transition: opacity .25s; pointer-events: none; max-width: 90vw; }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+  <header><b>📺 FuturaTV</b><span id="st"><i></i><span id="stTxt">Conectando…</span></span></header>
+  <div id="now">—</div>
+
+  <section class="pad">
+    <button class="sp"></button><button data-k="up" aria-label="Arriba">▲</button><button class="sp"></button>
+    <button data-k="left" aria-label="Izquierda">◀</button><button class="ok" data-k="ok">OK</button><button data-k="right" aria-label="Derecha">▶</button>
+    <button class="sp"></button><button data-k="down" aria-label="Abajo">▼</button><button class="sp"></button>
+  </section>
+  <section class="row">
+    <button data-k="back">↩<small>Atrás</small></button>
+    <button data-c="ch" data-v="-1">CH−<small>anterior</small></button>
+    <button data-c="ch" data-v="1">CH+<small>siguiente</small></button>
+    <button data-c="mute" id="muteBtn">🔇<small>sonido</small></button>
+    <button data-c="screen">⛶<small>pantalla</small></button>
+  </section>
+
+  <h3>★ Favoritos · toca uno para verlo en la TV</h3>
+  <div class="list" id="favs"><div class="empty">Cargando…</div></div>
+
+  <h3>Buscar canal</h3>
+  <div class="field"><input id="q" placeholder="Nombre del canal" autocomplete="off"><button class="btn" id="qs">Buscar</button></div>
+  <div class="list" id="res" style="margin-top:8px"></div>
+
+  <h3>Enviar un video de YouTube a Favoritos</h3>
+  <div class="field"><input id="yt" placeholder="https://youtu.be/..." autocomplete="off"><button class="btn" id="ys">Enviar</button></div>
+
+  <button class="btn bye" id="bye">Desconectar este celular</button>
+
+  <div class="off hidden" id="off">
+    <b style="font-size:20px">Desconectado</b>
+    <p id="offTxt">Este celular ya no controla la TV.</p>
+    <button class="btn" id="re">Volver a conectar</button>
+  </div>
+  <div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var k = new URLSearchParams(location.search).get('k') || '';
+  var KEY = 'ftv-sid-' + k, sid = '', last = '', manualOff = false, poll = null, tt = null;
+  try { sid = localStorage.getItem(KEY) || ''; } catch (e) { }
+
+  function toast(t) { var el = $('toast'); el.textContent = t; el.classList.add('show'); clearTimeout(tt); tt = setTimeout(function () { el.classList.remove('show'); }, 1800); }
+  function post(path, data) {
+    var b = Object.keys(data).map(function (n) { return n + '=' + encodeURIComponent(data[n]); }).join('&');
+    return fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: b, cache: 'no-store' })
+      .then(function (r) { return r.text(); });
+  }
+  function setOn(on, txt) { $('st').classList.toggle('on', on); $('stTxt').textContent = txt; }
+  function showOff(txt) {
+    $('off').classList.remove('hidden'); $('offTxt').textContent = txt; setOn(false, 'Desconectado');
+    clearInterval(poll); poll = null;
+  }
+  function hello() {
+    return post('/hello', { k: k }).then(function (t) {
+      if (t === 'NOK' || !t) { sid = ''; showOff('La TV cambió el código o desconectó los celulares. Escanea de nuevo el QR en la TV (Ajustes → Control remoto).'); return false; }
+      sid = t.trim(); try { localStorage.setItem(KEY, sid); } catch (e) { }
+      $('off').classList.add('hidden'); setOn(true, 'Conectado'); startPoll(); return true;
+    }).catch(function () { setOn(false, 'Sin conexión con la TV'); return false; });
+  }
+  function cmd(c, v) {
+    if (navigator.vibrate) navigator.vibrate(12);
+    if (!sid) { hello(); return; }
+    post('/cmd', { sid: sid, c: c, v: v == null ? '' : v }).then(function (t) {
+      if (t === 'DESCONECTADO') hello().then(function (ok) { if (ok) post('/cmd', { sid: sid, c: c, v: v == null ? '' : v }); });
+    }).catch(function () { setOn(false, 'Sin conexión con la TV (¿mismo Wi-Fi?)'); });
+  }
+  function item(name, sub, on, onClick) {
+    var b = document.createElement('button'); b.className = 'item' + (on ? ' now' : '');
+    var s = document.createElement('span'); s.textContent = name; b.appendChild(s);
+    if (sub) { var e = document.createElement('em'); e.textContent = sub; b.appendChild(e); }
+    b.addEventListener('click', onClick); return b;
+  }
+  function render(st) {
+    $('now').innerHTML = st.now ? 'En la TV: <b></b>' : 'En la TV: sin canal puesto';
+    if (st.now) $('now').querySelector('b').textContent = st.now + (st.mode === 'pip' ? ' (ventana chica)' : '');
+    $('muteBtn').firstChild.textContent = st.muted ? '🔇' : '🔊';
+    var f = $('favs'); f.innerHTML = '';
+    (st.favs || []).forEach(function (n, i) { f.appendChild(item(n.name, n.yt ? 'YouTube' : '', n.name === st.now, function () { cmd('play', i); toast('▶ ' + n.name); })); });
+    if (!(st.favs || []).length) f.innerHTML = '<div class="empty">No hay favoritos en la TV.</div>';
+    var r = $('res'); r.innerHTML = '';
+    (st.res || []).forEach(function (n, i) { r.appendChild(item(n, '', n === st.now, function () { cmd('playres', i); toast('▶ ' + n); })); });
+  }
+  function startPoll() {
+    if (poll) return;
+    var tick = function () {
+      if (!sid) return;
+      fetch('/state?sid=' + encodeURIComponent(sid), { cache: 'no-store' }).then(function (r) { return r.text(); }).then(function (t) {
+        if (t === '"DESCONECTADO"') { if (!manualOff) hello(); return; }
+        setOn(true, 'Conectado');
+        if (t !== last) { last = t; try { render(JSON.parse(t)); } catch (e) { } }
+      }).catch(function () { setOn(false, 'Sin conexión con la TV (¿mismo Wi-Fi?)'); });
+    };
+    tick(); poll = setInterval(tick, 2000);
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll('[data-k]'), function (b) { b.addEventListener('click', function () { cmd('key', b.getAttribute('data-k')); }); });
+  Array.prototype.forEach.call(document.querySelectorAll('[data-c]'), function (b) { b.addEventListener('click', function () { cmd(b.getAttribute('data-c'), b.getAttribute('data-v')); }); });
+  $('qs').addEventListener('click', function () { var q = $('q').value.trim(); if (q) { cmd('search', q); toast('Buscando «' + q + '» en la TV…'); } });
+  $('q').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('qs').click(); });
+  $('ys').addEventListener('click', function () {
+    var u = $('yt').value.trim(); if (!u) { toast('Pega un enlace primero'); return; }
+    cmd('yt', u); $('yt').value = ''; toast('Enviado: míralo en Favoritos de la TV');
+  });
+  $('bye').addEventListener('click', function () {
+    manualOff = true;
+    post('/bye', { sid: sid }).catch(function () { });
+    sid = ''; try { localStorage.removeItem(KEY); } catch (e) { }
+    showOff('Este celular ya no controla la TV.');
+  });
+  $('re').addEventListener('click', function () { manualOff = false; hello(); });
+
+  if (!k) showOff('Abre esta página escaneando el QR que muestra la TV (Ajustes → Control remoto).');
+  else if (sid) startPoll(); else hello();
+})();
+</script>
+</body>
+</html>

@@ -62,9 +62,13 @@
       <span>Pega o escribe el enlace del video (youtube.com/watch?v=… · youtu.be/… · /live/…). Se abre en la app de YouTube.</span>
       <input id="ytInput" class="focusable" type="text" spellcheck="false" autocomplete="off" placeholder="https://youtu.be/...">
     </label>
-    <div class="row"><button class="btn focusable" id="ytAdd">＋ Agregar a favoritos</button><button class="btn ghost focusable tv-only" id="linkPhone">📱 Enviar enlace desde el celular</button></div>
-    <div class="link-qr hidden" id="linkBox"><div class="qr" id="linkQr"></div><p class="hint" id="linkTxt"></p></div>
+    <div class="row"><button class="btn focusable" id="ytAdd">＋ Agregar a favoritos</button></div>
     <p class="hint" id="ytInfo"></p>
+    <h2 class="sub tv-only">📱 Control remoto desde el celular</h2>
+    <p class="hint tv-only">Con el celular conectado al mismo Wi-Fi: cambia canales, pon favoritos, busca y envía videos de YouTube.</p>
+    <div class="row tv-only"><button class="btn focusable" id="remoteOn">Conectar un celular (código QR)</button><button class="btn ghost focusable" id="remoteOff">Desconectar celulares</button></div>
+    <div class="link-qr hidden" id="linkBox"><div class="qr" id="linkQr"></div><p class="hint" id="linkTxt"></p></div>
+    <p class="hint tv-only" id="remoteInfo"></p>
     <h2 class="sub">Lista de canales en pantalla completa</h2>
     <div class="row"><button class="btn ghost focusable" id="listMode"></button></div>
     <div class="row"><button class="btn ghost focusable" id="prevMode"></button></div>

@@ -46,6 +46,9 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URLDecoder;
 import java.util.Collections;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import android.content.SharedPreferences;
 
 /**
  * Contenedor Android TV de FuturaTV: muestra la interfaz web y abre otras apps.
@@ -492,6 +495,59 @@ public class MainActivity extends Activity {
     // ---------- Enviar enlaces desde el celular: mini página web en la red local ----------
     private ServerSocket linkServer;
     private String linkToken = "";
+    // Control remoto desde el celular: cada celular conectado tiene su propia sesión (se puede desconectar)
+    private final Map<String, Long> remoteSessions = new ConcurrentHashMap<>();
+    private volatile String remoteState = "{}";
+    private static final long SESSION_ALIVE_MS = 30000;
+
+    private SharedPreferences prefs() { return getSharedPreferences("futuratv", MODE_PRIVATE); }
+    private static String randomId(int n) {
+        String a = "abcdefghijkmnpqrstuvwxyz23456789"; StringBuilder b = new StringBuilder();
+        java.security.SecureRandom r = new java.security.SecureRandom();
+        for (int i = 0; i < n; i++) b.append(a.charAt(r.nextInt(a.length())));
+        return b.toString();
+    }
+    /** Código de emparejamiento: se guarda (los celulares siguen conectados aunque se reinicie la app) hasta «Desconectar». */
+    private String pairToken() {
+        if (linkToken.isEmpty()) {
+            linkToken = prefs().getString("pairToken", "");
+            if (linkToken.isEmpty()) { linkToken = randomId(10); prefs().edit().putString("pairToken", linkToken).apply(); }
+        }
+        return linkToken;
+    }
+    private int remoteCount() {
+        long now = System.currentTimeMillis();
+        for (Map.Entry<String, Long> e : remoteSessions.entrySet()) if (now - e.getValue() > SESSION_ALIVE_MS) remoteSessions.remove(e.getKey());
+        return remoteSessions.size();
+    }
+    private void remoteDisconnectAll() {
+        remoteSessions.clear();
+        linkToken = randomId(10);                                   // el QR anterior deja de servir
+        prefs().edit().putString("pairToken", linkToken).apply();
+        stopLinkServer();
+    }
+    private static Map<String, String> form(String body) {
+        Map<String, String> m = new java.util.HashMap<>();
+        if (body == null) return m;
+        for (String kv : body.split("&")) {
+            int i = kv.indexOf('=');
+            if (i <= 0) continue;
+            try { m.put(kv.substring(0, i), URLDecoder.decode(kv.substring(i + 1), "UTF-8")); } catch (Exception ignored) { }
+        }
+        return m;
+    }
+    private boolean sessionOk(String sid) {
+        if (sid == null || !remoteSessions.containsKey(sid)) return false;
+        remoteSessions.put(sid, System.currentTimeMillis());
+        return true;
+    }
+    /** Página del control remoto: sale de los archivos de la app (se actualiza sola con la app). */
+    private String remotePage() {
+        try {
+            InputStream in = useDownloaded() ? new FileInputStream(new File(wwwDir(), "remote.html")) : getAssets().open("remote.html");
+            return readAll(in);
+        } catch (Exception e) { return LINK_PAGE; }
+    }
 
     private static String localIp() {
         String any = null;
@@ -511,8 +567,8 @@ public class MainActivity extends Activity {
     private synchronized String startLinkServer() {
         String ip = localIp();
         if (ip == null) return "";
-        if (linkServer != null && !linkServer.isClosed()) return "http://" + ip + ":" + linkServer.getLocalPort() + "/?k=" + linkToken;
-        linkToken = Long.toString(System.nanoTime() & 0xffffff, 36);
+        if (linkServer != null && !linkServer.isClosed()) return "http://" + ip + ":" + linkServer.getLocalPort() + "/?k=" + pairToken();
+        pairToken();
         for (int port = 8765; port < 8775; port++) {
             try {
                 ServerSocket ss = new ServerSocket();
@@ -520,7 +576,6 @@ public class MainActivity extends Activity {
                 ss.bind(new InetSocketAddress(port));
                 linkServer = ss;
                 new Thread(() -> serveLinks(ss)).start();
-                web.postDelayed(this::stopLinkServer, 15 * 60 * 1000);   // se apaga sola a los 15 min
                 return "http://" + ip + ":" + port + "/?k=" + linkToken;
             } catch (Exception ignored) { }
         }
@@ -569,7 +624,33 @@ public class MainActivity extends Activity {
             }
             String resp;
             String type = "text/html; charset=utf-8";
-            if (first.startsWith("POST") && path.startsWith("/add")) {
+            String query = path.indexOf('?') >= 0 ? path.substring(path.indexOf('?') + 1) : "";
+            String route = path.indexOf('?') >= 0 ? path.substring(0, path.indexOf('?')) : path;
+            Map<String, String> f = form(first.startsWith("POST") ? body : query);
+            if (route.equals("/hello")) {                                 // un celular se conecta con el código del QR
+                type = "text/plain; charset=utf-8";
+                if (pairToken().equals(f.get("k"))) {
+                    String sid = randomId(16);
+                    remoteSessions.put(sid, System.currentTimeMillis());
+                    js("window.mitvRemoteEvent && window.mitvRemoteEvent('hello')");
+                    resp = sid;
+                } else resp = "NOK";
+            } else if (route.equals("/cmd")) {                             // tecla o acción del control remoto
+                type = "text/plain; charset=utf-8";
+                if (sessionOk(f.get("sid"))) {
+                    String c = f.get("c") == null ? "" : f.get("c"), v = f.get("v") == null ? "" : f.get("v");
+                    js("window.mitvRemote && window.mitvRemote(" + JSONObject.quote(c) + "," + JSONObject.quote(v) + ")");
+                    resp = "OK";
+                } else resp = "DESCONECTADO";
+            } else if (route.equals("/state")) {                           // qué se ve en la TV + favoritos
+                type = "application/json; charset=utf-8";
+                resp = sessionOk(f.get("sid")) ? remoteState : "\"DESCONECTADO\"";
+            } else if (route.equals("/bye")) {                             // el celular se desconecta
+                type = "text/plain; charset=utf-8";
+                if (f.get("sid") != null && remoteSessions.remove(f.get("sid")) != null)
+                    js("window.mitvRemoteEvent && window.mitvRemoteEvent('bye')");
+                resp = "OK";
+            } else if (first.startsWith("POST") && path.startsWith("/add")) {
                 String k = "", u = "";
                 for (String kv : body.split("&")) {
                     int i = kv.indexOf('=');
@@ -577,7 +658,7 @@ public class MainActivity extends Activity {
                     String key = kv.substring(0, i), val = URLDecoder.decode(kv.substring(i + 1), "UTF-8");
                     if (key.equals("k")) k = val; else if (key.equals("u")) u = val;
                 }
-                if (!k.equals(linkToken)) resp = "Código vencido: escanea el QR de nuevo en la TV.";
+                if (!k.equals(pairToken()) && !sessionOk(f.get("sid"))) resp = "Código vencido: escanea el QR de nuevo en la TV.";
                 else if (u.trim().isEmpty()) resp = "Falta el enlace.";
                 else {
                     final String link = u.trim();
@@ -586,7 +667,7 @@ public class MainActivity extends Activity {
                 }
                 type = "text/plain; charset=utf-8";
             } else {
-                resp = LINK_PAGE;
+                resp = remotePage();                                       // página del control remoto
             }
             byte[] out = resp.getBytes("UTF-8");
             OutputStream os = s.getOutputStream();
@@ -697,5 +778,17 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public void stopLinkServer() { MainActivity.this.stopLinkServer(); }
+
+        /** Control remoto: cuántos celulares están conectados ahora. */
+        @JavascriptInterface
+        public int remoteCount() { return MainActivity.this.remoteCount(); }
+
+        /** Control remoto: desconecta a todos y cambia el código (el QR anterior deja de servir). */
+        @JavascriptInterface
+        public void remoteDisconnectAll() { MainActivity.this.remoteDisconnectAll(); }
+
+        /** La app web informa qué se está viendo y los favoritos (lo lee el celular). */
+        @JavascriptInterface
+        public void setRemoteState(String json) { if (json != null && json.length() < 200000) remoteState = json; }
     }
 }
