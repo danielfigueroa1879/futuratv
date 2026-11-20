@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.6.0';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.6.1';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -1073,6 +1073,7 @@
     sidePrevStop();
     zapList = list; zapIdx = (idx + list.length) % list.length; zapGroup = group;
     nowCh = zapList[zapIdx];
+    webMediaInfo();
     setMode(newMode || (mode === 'none' ? 'full' : mode));
     $('playerError').classList.add('hidden');
     $('spinner').classList.remove('hidden');
@@ -1221,6 +1222,7 @@
   }
 
   function setMode(m) {
+    if (m !== 'pip' && sysPip) webPipExit();      // al volver a pantalla completa se cierra la ventana flotante
     mode = m;
     if (IS_ANDROID && window.Android.setPlaying) { try { window.Android.setPlaying(m !== 'none'); } catch (e) { } }
     if (m !== 'full') sidePrevStop();
@@ -1237,7 +1239,8 @@
   }
   function minimize() {           // pantalla completa -> PiP
     setMode('pip');
-    if (!IS_PHONE && !store('pipTip')) { store('pipTip', '1'); setTimeout(function () { toast('Para mover la ventana: sube con ▲ hasta «⇲ Mover PiP» y aprieta OK'); }, 300); }
+    if (IS_WEB && webPipEnter()) { if (currentView !== 'live') showView('live'); return; }   // navegador: ventana flotante real, fuera del navegador
+    if (!IS_PHONE && !IS_WEB && !store('pipTip')) { store('pipTip', '1'); setTimeout(function () { toast('Para mover la ventana: sube con ▲ hasta «⇲ Mover PiP» y aprieta OK'); }, 300); }
     if (currentView !== 'live') showView('live');
     var i = filtered.indexOf(nowCh);
     var el = i >= 0 ? document.querySelector('[data-ch="' + i + '"]') : null;
@@ -1245,6 +1248,7 @@
   }
   function stopPlayer() {
     clearTimeout(startTimer);
+    webPipExit();
     stopVideo(); nowCh = null; setMode('none'); markPlaying();
     if (pendingUpdate) applyUpdate();
   }
@@ -1280,7 +1284,59 @@
     var video = $('video');
     video.classList.remove('ready');
     if (hls) { rememberBandwidth(hls); hls.destroy(); hls = null; }
-    video.removeAttribute('src'); if (video.load) video.load();
+    if (!sysPip) { video.removeAttribute('src'); if (video.load) video.load(); }   // en ventana flotante se cambia de canal sin cerrarla
+  }
+  // ---------- Navegador: ventana flotante del sistema (Picture-in-Picture), sale del navegador ----------
+  var sysPip = false;
+  function webPipSupported(v) {
+    return IS_WEB && ((document.pictureInPictureEnabled && typeof v.requestPictureInPicture === 'function' && !v.disablePictureInPicture) ||
+      (typeof v.webkitSupportsPresentationMode === 'function' && v.webkitSupportsPresentationMode('picture-in-picture')));
+  }
+  function sysPipOff() { sysPip = false; $('player').classList.remove('sys-pip'); }
+  function webPipEnter() {
+    var v = $('video');
+    if (!webPipSupported(v)) return false;
+    try {
+      if (typeof v.requestPictureInPicture === 'function' && document.pictureInPictureEnabled) {
+        var pr = v.requestPictureInPicture();
+        if (pr && pr.catch) pr.catch(function () { sysPipOff(); });   // el navegador no lo permitió: queda la ventana chica dentro de la página
+      } else v.webkitSetPresentationMode('picture-in-picture');
+    } catch (e) { return false; }
+    sysPip = true; $('player').classList.add('sys-pip');
+    return true;
+  }
+  function webPipExit() {
+    if (!sysPip) return;
+    sysPipOff();
+    var v = $('video');
+    try {
+      if (document.pictureInPictureElement && document.exitPictureInPicture) document.exitPictureInPicture().catch(function () { });
+      else if (v.webkitPresentationMode === 'picture-in-picture') v.webkitSetPresentationMode('inline');
+    } catch (e) { }
+  }
+  function webPipLeft() {                      // se cerró la ventana flotante desde ella misma
+    if (!sysPip) return;
+    sysPipOff();
+    var v = $('video');
+    if (v.paused || mode === 'none') stopPlayer();   // «✕»: se cierra el video
+    else setMode('full');                            // «volver a la pestaña»: pantalla completa
+  }
+  if (IS_WEB) {
+    $('video').addEventListener('leavepictureinpicture', webPipLeft);
+    $('video').addEventListener('webkitpresentationmodechanged', function () { if ($('video').webkitPresentationMode !== 'picture-in-picture') webPipLeft(); });
+    if ('mediaSession' in navigator) {           // ⏮ ⏭ en la ventana flotante cambian de canal
+      try {
+        navigator.mediaSession.setActionHandler('previoustrack', function () { if (nowCh) zap(-1); });
+        navigator.mediaSession.setActionHandler('nexttrack', function () { if (nowCh) zap(1); });
+      } catch (e) { }
+    }
+  }
+  function webMediaInfo() {
+    if (!IS_WEB || !nowCh || !('mediaSession' in navigator) || typeof window.MediaMetadata !== 'function') return;
+    try {
+      navigator.mediaSession.metadata = new window.MediaMetadata({ title: nowCh.name, artist: 'FuturaTV',
+        artwork: nowCh.logo ? [{ src: nowCh.logo, sizes: '256x256' }] : [] });
+    } catch (e) { }
   }
   function showOsd() {
     $('osd').classList.remove('fade');

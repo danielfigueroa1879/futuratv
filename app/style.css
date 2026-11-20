@@ -865,3 +865,5 @@ html:not(.phone) .phone-only { display: none !important; }
 .ch.web-blk { opacity: .5; }
 .badge.blk { background: #334155; color: #e2e8f0; left: auto; right: 10px; top: auto; bottom: 10px; font-size: 14px; }
 .phone .badge.blk { font-size: 9px; right: 4px; bottom: 4px; padding: 2px 5px; }
+/* navegador: el video está en la ventana flotante del sistema; el recuadro de la página no se ve */
+.player.sys-pip { opacity: 0 !important; pointer-events: none !important; }
