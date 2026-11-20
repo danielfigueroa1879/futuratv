@@ -1,5 +1,5 @@
 # Publica la versión para el navegador (carpeta app/) en GitHub Pages cada vez que cambia main.
-# Una sola vez: Settings → Pages → Source: «GitHub Actions».
+# Requiere Settings → Pages → Source: «GitHub Actions» (activado). Dirección: https://danielfigueroa1879.github.io/futuratv/
 name: Versión web (GitHub Pages)
 on:
   push:
