@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.5.1';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.6.0';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -20,6 +20,31 @@
     return touch && Math.min(screen.width, screen.height) < 1100;   // celulares y tablets
   })();
   if (/[?&]modo=celular/.test(location.search)) IS_PHONE = true;   // para probar en un PC
+  // Versión para el navegador (PC, Mac, iPhone…): sin las funciones que solo tiene la app instalada
+  var IS_WEB = !IS_ANDROID && !window.PalmSystem && !window.webOS && /^https?:$/.test(location.protocol);
+  if (IS_WEB) document.documentElement.classList.add('web');
+  // Navegador de PC: la pantalla (hecha para 1920 de ancho) se escala al tamaño de la ventana
+  var UI_SCALE = 1;
+  function fitWeb() {
+    if (!IS_WEB || IS_PHONE) return;
+    var w = window.innerWidth || 1920, h = window.innerHeight || 1080;
+    UI_SCALE = Math.min(w / 1920, 1.5);
+    var de = document.documentElement;
+    de.style.zoom = UI_SCALE;
+    var hh = Math.max(560, Math.round(h / UI_SCALE)) + 'px';
+    de.style.height = hh; if (document.body) document.body.style.height = hh;
+  }
+  fitWeb();
+  window.addEventListener('resize', fitWeb);
+  document.addEventListener('DOMContentLoaded', fitWeb);
+  function rectOf(el) {                        // medidas en px de la página (sin la escala del navegador)
+    var r = el.getBoundingClientRect();
+    if (UI_SCALE === 1) return r;
+    var k = UI_SCALE;
+    return { left: r.left / k, top: r.top / k, right: r.right / k, bottom: r.bottom / k, width: r.width / k, height: r.height / k, x: r.left / k, y: r.top / k };
+  }
+  function VW() { return window.innerWidth / UI_SCALE; }
+  function VH() { return window.innerHeight / UI_SCALE; }
   var HOME_VIEW = 'live';   // la app parte en «Canales en vivo» (TV y celular)
   if (IS_PHONE) {
     document.documentElement.classList.add('phone');
@@ -492,15 +517,15 @@
     if (inTabs) { if (dir === 'down' && items.length) { setFocus(items[0]); return true; } return false; }
     if (i < 0) return false;
     if (dir === 'down') {                        // siguiente elemento que esté más abajo (salta los de la misma fila)
-      var top = focused.getBoundingClientRect().top;
-      for (var j = i + 1; j < items.length; j++) if (items[j].getBoundingClientRect().top > top + 5) { setFocus(items[j]); return true; }
+      var top = rectOf(focused).top;
+      for (var j = i + 1; j < items.length; j++) if (rectOf(items[j]).top > top + 5) { setFocus(items[j]); return true; }
       return true;
     }
-    var t0 = focused.getBoundingClientRect().top;
+    var t0 = rectOf(focused).top;
     for (var k = i - 1; k >= 0; k--) {
-      var tk = items[k].getBoundingClientRect().top;
+      var tk = rectOf(items[k]).top;
       if (tk < t0 - 5) {                         // fila de arriba: su primer elemento
-        while (k > 0 && Math.abs(items[k - 1].getBoundingClientRect().top - tk) < 5) k--;
+        while (k > 0 && Math.abs(rectOf(items[k - 1]).top - tk) < 5) k--;
         setFocus(items[k]); return true;
       }
     }
@@ -511,12 +536,12 @@
     if (!menuOpen && focused && focused.classList.contains('ch') && gridMove(dir)) return;
     var list = visibleFocusables();
     if (!focused || list.indexOf(focused) < 0) { setFocus(list[0]); return; }
-    var a = focused.getBoundingClientRect();
+    var a = rectOf(focused);
     var ax = a.left + a.width / 2, ay = a.top + a.height / 2;
     var best = null, bestScore = Infinity;
     list.forEach(function (el) {
       if (el === focused) return;
-      var b = el.getBoundingClientRect();
+      var b = rectOf(el);
       var bx = b.left + b.width / 2, by = b.top + b.height / 2;
       var dx = bx - ax, dy = by - ay, main, cross;
       if (dir === 'left')  { if (dx >= -1) return; main = -dx; cross = Math.abs(dy); }
@@ -789,7 +814,9 @@
           '<span class="nm">' + escapeHtml(c.name) + '</span><span class="cnt">' + c.count + ' canales</span></button>';
       }
       var now = nowCh && chKey(nowCh) === chKey(c);
-      return '<button class="ch focusable' + (now ? ' now' : '') + '" data-ch="' + i + '">' +
+      var blk = IS_WEB && webBlocked && webBlocked[chKey(c)];
+      return '<button class="ch focusable' + (now ? ' now' : '') + (blk ? ' web-blk' : '') + '" data-ch="' + i + '">' +
+        (blk ? '<span class="badge blk">Solo en la app</span>' : '') +
         (isFav(c) ? '<span class="badge fav">★</span>' : '') + (now ? '<span class="badge live">EN VIVO</span>' : '') +
         logoHtml(c) + '<span class="nm">' + escapeHtml(c.name) + '</span></button>';
     }).join('');
@@ -1166,12 +1193,24 @@
       hls.on(window.Hls.Events.ERROR, function (_, d) {
         if (!d.fatal) return;
         if (d.type === window.Hls.ErrorTypes.MEDIA_ERROR && !ch._retried) { ch._retried = true; hls.recoverMediaError(); return; }
+        if (IS_WEB && d.type === window.Hls.ErrorTypes.NETWORK_ERROR && !(d.response && d.response.code >= 400)) { webBlock(ch); return; }
         playError();
       });
     } else {
       video.src = ch.url; // webOS reproduce HLS de forma nativa
     }
-    if (video.play) { var p = video.play(); if (p && p.catch) p.catch(function () { }); }
+    if (video.play) {
+      var p = video.play();
+      if (p && p.catch) p.catch(function (e) {
+        // Navegador: no deja partir con sonido sin un clic. Parte sin sonido y lo activa con el primer clic o tecla
+        if (IS_WEB && e && e.name === 'NotAllowedError' && !video.muted) {
+          video.muted = true; video.play().catch(function () { });
+          toast('🔇 Sin sonido: haz clic o aprieta una tecla para activarlo');
+          var on = function () { video.muted = false; document.removeEventListener('pointerdown', on, true); document.removeEventListener('keydown', on, true); };
+          document.addEventListener('pointerdown', on, true); document.addEventListener('keydown', on, true);
+        }
+      });
+    }
   }
   var zapRapid = false;
   function zap(step) {                         // ▲▼ salta los videos de YouTube (no son canales en vivo)
@@ -1217,6 +1256,20 @@
     var i = filtered.indexOf(nowCh);
     var el = i >= 0 ? document.querySelector('[data-ch="' + i + '"]') : null;
     if (el) { el.classList.add('now'); el.insertAdjacentHTML('afterbegin', '<span class="badge live">EN VIVO</span>'); }
+  }
+  // Navegador: el canal no permite que una página web lo muestre (solo funciona en la app de TV o celular)
+  var webBlocked = {};
+  try { webBlocked = JSON.parse(store('webBlocked') || '{}') || {}; } catch (e) { webBlocked = {}; }
+  function webBlock(ch) {
+    $('spinner').classList.add('hidden');
+    $('playerError').textContent = 'Este canal no se puede ver en el navegador: el canal lo bloquea. Míralo en la app FuturaTV de la TV o del celular.' +
+      (IS_PHONE ? ' Toca la pantalla y usa ◀ ▶ para cambiar.' : ' Prueba ▲▼ para cambiar.');
+    $('playerError').classList.remove('hidden');
+    if (!webBlocked[chKey(ch)]) {
+      webBlocked[chKey(ch)] = 1; store('webBlocked', JSON.stringify(webBlocked));
+      var i = filtered.indexOf(ch), el = i >= 0 ? document.querySelector('[data-ch="' + i + '"]') : null;
+      if (el && !el.querySelector('.badge.blk')) { el.classList.add('web-blk'); el.insertAdjacentHTML('afterbegin', '<span class="badge blk">Solo en la app</span>'); }
+    }
   }
   function playError() {
     $('spinner').classList.add('hidden');
@@ -1283,7 +1336,7 @@
     updateSideMarks();
   }
   // Solo se dibujan las filas visibles: moverse por la lista es instantáneo aunque tenga 500 canales
-  var SIDE_ROWS = IS_PHONE ? Math.max(12, Math.ceil(Math.max(window.innerHeight, window.innerWidth) / 54) + 2) : 10;
+  var SIDE_ROWS = IS_PHONE ? Math.max(12, Math.ceil(Math.max(VH(), VW()) / 54) + 2) : 10;
   function updateSideMarks() {
     if (LIST_H) { hbRender(); sidePrevSchedule(); return; }
     if (IS_PHONE) { sideRenderPhone(); return; }
@@ -1526,15 +1579,15 @@
     $('player').classList.remove('has-prev');
   }
   function slotPlace(sl, el, side) {               // coloca el recuadro sobre la tarjeta / fila; false si aún no tiene tamaño
-    var P = $('player').getBoundingClientRect(), b = sl.box, r;
+    var P = rectOf($('player')), b = sl.box, r;
     if (LIST_H) {
-      r = el.getBoundingClientRect(); if (r.width < 20) return false;
+      r = rectOf(el); if (r.width < 20) return false;
       b.style.left = (r.left - P.left) + 'px'; b.style.top = (r.top - P.top) + 'px';
       b.style.width = r.width + 'px'; b.style.height = r.height + 'px';
       b.querySelector('.sp-lab').innerHTML = el.querySelector('.hlab').innerHTML;   // el nombre va sobre la imagen
     } else {
-      r = el.getBoundingClientRect(); if (r.height < 10) return false;
-      var S = $('side').getBoundingClientRect(), pw = IS_PHONE ? 72 : 128, ph = IS_PHONE ? 40 : 72, gap = IS_PHONE ? 54 : 78;
+      r = rectOf(el); if (r.height < 10) return false;
+      var S = rectOf($('side')), pw = IS_PHONE ? 72 : 128, ph = IS_PHONE ? 40 : 72, gap = IS_PHONE ? 54 : 78;
       b.style.width = pw + 'px'; b.style.height = ph + 'px';
       b.style.left = (S.right - P.left - gap - pw) + 'px'; b.style.top = (r.top - P.top + (r.height - ph) / 2) + 'px';
     }
@@ -2003,7 +2056,7 @@
   // pipFree = posición guardada como fracción del espacio libre (0..1), así sirve en cualquier tamaño de pantalla
   var pipFree = null, pipMoving = false, pipMoveTimer = null;
   try { pipFree = JSON.parse(store('pipFree') || 'null'); } catch (e) { pipFree = null; }
-  function pipArea() { return { W: document.documentElement.clientWidth || window.innerWidth, H: document.documentElement.clientHeight || window.innerHeight }; }
+  function pipArea() { return { W: VW(), H: VH() }; }
   function applyPipFree() {
     var p = $('player');
     if (IS_PHONE || mode !== 'pip' || !pipFree) { p.style.left = p.style.top = p.style.right = p.style.bottom = ''; return; }
@@ -2019,7 +2072,7 @@
   function startPipMove() {
     if (mode !== 'pip') return;
     if (IS_PHONE) { cyclePip(); return; }
-    if (!pipFree) pipFreeFromRect($('player').getBoundingClientRect());
+    if (!pipFree) pipFreeFromRect(rectOf($('player')));
     pipMoving = true;
     $('player').classList.add('moving');
     applyPipFree();
@@ -2060,7 +2113,7 @@
     p.style.transition = 'none'; p.style.transform = '';
     applyPipPos();
     if (fromRect) {                          // animación suave hasta la esquina
-      var to = p.getBoundingClientRect();
+      var to = rectOf(p);
       p.style.transform = 'translate(' + (fromRect.left - to.left) + 'px,' + (fromRect.top - to.top) + 'px)';
       void p.offsetWidth;
       p.style.transition = 'transform .22s ease-out';
@@ -2069,19 +2122,19 @@
   }
   function cyclePip() {
     if (mode !== 'pip') return;
-    var p = $('player'), from = p.getBoundingClientRect();
+    var p = $('player'), from = rectOf(p);
     setPipPos(PIP_POS[(PIP_POS.indexOf(pipPos) + 1) % PIP_POS.length], from);
     toast('Ventana PiP: ' + PIP_NAMES[pipPos]);
   }
   function pipDown(x, y, target) {
     if (mode !== 'pip' || !target.closest || !target.closest('#player')) return false;
-    var r = $('player').getBoundingClientRect();
+    var r = rectOf($('player'));
     pipDrag = { x: x, y: y, r: r, moved: false, dx: 0, dy: 0 };
     return true;
   }
   function pipMove(x, y) {
     if (!pipDrag) return false;
-    var d = pipDrag, W = window.innerWidth, H = window.innerHeight;
+    var d = pipDrag, W = VW(), H = VH();
     d.dx = Math.max(-d.r.left, Math.min(W - d.r.right, x - d.x));
     d.dy = Math.max(-d.r.top, Math.min(H - d.r.bottom, y - d.y));
     if (!d.moved && Math.abs(x - d.x) + Math.abs(y - d.y) < 10) return true;
@@ -2105,17 +2158,17 @@
       return;
     }
     var cx = (d.r.left + d.r.right) / 2 + d.dx, cy = (d.r.top + d.r.bottom) / 2 + d.dy;
-    var c = (cy < window.innerHeight / 2 ? 't' : 'b') + (cx < window.innerWidth / 2 ? 'l' : 'r');
+    var c = (cy < VH() / 2 ? 't' : 'b') + (cx < VW() / 2 ? 'l' : 'r');
     setPipPos(c, { left: d.r.left + d.dx, top: d.r.top + d.dy });
   }
-  $('player').addEventListener('touchstart', function (e) { pipDown(e.touches[0].clientX, e.touches[0].clientY, e.target); }, { passive: true });
+  $('player').addEventListener('touchstart', function (e) { pipDown(e.touches[0].clientX / UI_SCALE, e.touches[0].clientY / UI_SCALE, e.target); }, { passive: true });
   $('player').addEventListener('touchmove', function (e) {
-    if (pipMove(e.touches[0].clientX, e.touches[0].clientY) && e.cancelable) e.preventDefault();
+    if (pipMove(e.touches[0].clientX / UI_SCALE, e.touches[0].clientY / UI_SCALE) && e.cancelable) e.preventDefault();
   }, { passive: false });
   $('player').addEventListener('touchend', pipUp);
   $('player').addEventListener('touchcancel', pipUp);
-  $('player').addEventListener('mousedown', function (e) { if (pipDown(e.clientX, e.clientY, e.target)) e.preventDefault(); });
-  document.addEventListener('mousemove', function (e) { if (pipDrag) pipMove(e.clientX, e.clientY); });
+  $('player').addEventListener('mousedown', function (e) { if (pipDown(e.clientX / UI_SCALE, e.clientY / UI_SCALE, e.target)) e.preventDefault(); });
+  document.addEventListener('mousemove', function (e) { if (pipDrag) pipMove(e.clientX / UI_SCALE, e.clientY / UI_SCALE); });
   document.addEventListener('mouseup', pipUp);
 
   // Botones táctiles del reproductor
@@ -2337,7 +2390,7 @@
     setTimeout(wallSchedule, 0);           // otro favorito visible toma su lugar
   }
   function wallBigRect() {
-    var W = window.innerWidth, H = window.innerHeight, m = 8, w, h;
+    var W = VW(), H = VH(), m = 8, w, h;
     if (!IS_PHONE) {                                                    // TV: grande al frente, con borde a la vista
       W = document.documentElement.clientWidth || 1920; H = document.documentElement.clientHeight || 1080;
       h = H * 0.82; w = h * 16 / 9;
@@ -2385,7 +2438,7 @@
     if (wallBig === t) return;
     if (wallBig) wallCollapse(true);
     wallBig = t;
-    var inner = t.inner, r = inner.getBoundingClientRect(), B = wallBigRect();
+    var inner = t.inner, r = rectOf(inner), B = wallBigRect();
     t.el.classList.add('has-big');                            // sin zoom de foco: el video puede salir al frente
     inner.style.transition = 'none';
     inner.classList.add('big');
@@ -2426,7 +2479,7 @@
     inner.classList.remove('drag');
     inner.style.opacity = '';
     inner.style.transition = '';
-    inner.style.transform = wallFlip(t.el.getBoundingClientRect(), B);   // vuelve volando a su lugar
+    inner.style.transform = wallFlip(rectOf(t.el), B);   // vuelve volando a su lugar
     inner.addEventListener('transitionend', function te(e) { if (e.propertyName === 'transform') { inner.removeEventListener('transitionend', te); done(); } });
     setTimeout(done, 400);                                    // por si no llega transitionend
   }

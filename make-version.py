@@ -8,7 +8,8 @@ import json, os
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 APP = os.path.join(ROOT, 'app')
-SKIP_FILES = {'appinfo.json', 'icon.png', 'largeIcon.png', 'version.json', '.DS_Store'}
+SKIP_FILES = {'appinfo.json', 'icon.png', 'largeIcon.png', 'version.json', '.DS_Store',
+              'icon-192.png', 'icon-512.png', 'manifest.webmanifest'}   # solo para la versión del navegador
 
 info = json.load(open(os.path.join(APP, 'appinfo.json'), encoding='utf-8'))
 cfg = json.load(open(os.path.join(ROOT, 'config.json'), encoding='utf-8'))
