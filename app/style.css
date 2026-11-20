@@ -861,9 +861,15 @@ html:not(.phone) .phone-only { display: none !important; }
 .phone #player.side-v .osd, .phone #player.side-v .ptools { display: none !important; }
 
 /* ---------- Versión navegador ---------- */
-.web #exitBtn, .web .tab[data-view="apps"], .web #checkUpdate, .web #tvBtn, .web .tv-only, .web .phone-only, .web #linkBox { display: none !important; }
+.web #exitBtn, .web .tab[data-view="apps"], .web #tvBtn, .web .tv-only, .web .phone-only, .web #linkBox { display: none !important; }
 .ch.web-blk { opacity: .5; }
 .badge.blk { background: #334155; color: #e2e8f0; left: auto; right: 10px; top: auto; bottom: 10px; font-size: 14px; }
 .phone .badge.blk { font-size: 9px; right: 4px; bottom: 4px; padding: 2px 5px; }
 /* navegador: el video está en la ventana flotante del sistema; el recuadro de la página no se ve */
 .player.sys-pip { opacity: 0 !important; pointer-events: none !important; }
+/* navegador de PC: la página ocupa toda la ventana y Ajustes se recorre con la rueda del mouse */
+html.web:not(.phone) .view { height: calc(var(--apph, 1080px) - 160px); }
+html.web:not(.phone) #view-settings { overflow-y: auto; padding-bottom: 60px; }
+html.web:not(.phone) #view-settings > * { max-width: 1500px; }
+html.web:not(.phone) .channels { grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); max-height: calc(var(--apph, 1080px) - 420px); }
+html.web:not(.phone) .group-bar { max-width: none; flex: 1; min-width: 0; flex-wrap: wrap; }   /* PC: todas las categorías a la vista */

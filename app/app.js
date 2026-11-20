@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.6.1';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.7.0';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -28,11 +28,12 @@
   function fitWeb() {
     if (!IS_WEB || IS_PHONE) return;
     var w = window.innerWidth || 1920, h = window.innerHeight || 1080;
-    UI_SCALE = Math.min(w / 1920, 1.5);
+    UI_SCALE = Math.max(0.55, Math.min(w / 1920 * 0.8, 1.2));     // 80 % del tamaño de TV: se ve como en un PC (más compacto)
     var de = document.documentElement;
     de.style.zoom = UI_SCALE;
-    var hh = Math.max(560, Math.round(h / UI_SCALE)) + 'px';
-    de.style.height = hh; if (document.body) document.body.style.height = hh;
+    var ww = Math.round(w / UI_SCALE) + 'px', hh = Math.max(560, Math.round(h / UI_SCALE)) + 'px';
+    de.style.width = ww; de.style.height = hh; de.style.setProperty('--apph', hh);
+    if (document.body) { document.body.style.width = ww; document.body.style.height = hh; }
   }
   fitWeb();
   window.addEventListener('resize', fitWeb);
@@ -79,6 +80,9 @@
   var LOCAL_M3U = 'channels/chile.m3u';                              // copia incluida, por si no hay conexión con m3u.cl
   var DEFAULT_M3U = 'https://iptv-org.github.io/iptv/countries/cl.m3u'; // lista extra (se cambia en Ajustes)
   var EXTRA_GROUP = 'Más canales';
+  // Fútbol: canales gratuitos y oficiales (lista incluida en la app) + los de fútbol de la lista chilena
+  var FUT_LIST = 'channels/futbol.m3u', FUT_GROUP = '⚽ Fútbol';
+  var FUT_CHILE = { chvdeportes: 1, futgo: 1, d13: 1 };
   // Enlaces revisados que no funcionan (404, dominio inexistente, certificado inválido): no se muestran
   var DEAD_LIST = 'channels/caidos.json';
   function deadKey(u) { return String(u).replace(/[?&]PlaylistM3UCL$/, '').replace(/^http:/, 'https:').replace(/(\/\/[^\/:]+):\//, '$1/'); }
@@ -681,15 +685,21 @@
       .catch(function () { return []; });
     var extra = cachedGet(extraUrl, SIX_H).then(parseM3U).catch(function () { return []; });
     var intl = cachedGet(INTL_URL, SIX_H).then(parseM3U).catch(function () { return []; });
+    var fut = getText(FUT_LIST).then(parseM3U).catch(function () { return []; });
     var dead = getText(DEAD_LIST).then(function (t) {
       var o = {}; (JSON.parse(t) || []).forEach(function (u) { o[deadKey(u)] = 1; }); return o;
     }).catch(function () { return {}; });
-    Promise.all([chile, extra, intl, dead]).then(function (lists) {
+    Promise.all([chile, extra, intl, dead, fut]).then(function (lists) {
       var seen = {}, deadSet = lists[3];
       var alive = function (c) { return !deadSet[deadKey(c.url)]; };
       lists[0] = lists[0].filter(alive); lists[1] = lists[1].filter(alive); lists[2] = lists[2].filter(alive);
       channels = [];
-      lists[0].forEach(function (c) { seen[normName(c.name)] = 1; channels.push(c); });
+      lists[0].forEach(function (c) { var k0 = normName(c.name); seen[k0] = 1; if (FUT_CHILE[k0]) c.futbol = true; channels.push(c); });
+      lists[4].filter(alive).forEach(function (c) {
+        var k = normName(c.name);
+        if (seen[k]) return;
+        seen[k] = 1; c.group = FUT_GROUP; c.futbol = true; channels.push(c);
+      });
       lists[1].forEach(function (c) {
         var k = normName(c.name);
         if (seen[k]) return;           // ya está en la lista chilena
@@ -761,6 +771,7 @@
       return fl;
     }
     if (group === 'Todos') return vis.filter(function (c) { return !c.intl && !c.yt; });
+    if (group === FUT_GROUP) return vis.filter(function (c) { return c.futbol; });
     if (group === INTL_GROUP) return intlCountries(vis);
     return vis.filter(function (c) { return c.group === group; });
   }
@@ -781,6 +792,7 @@
     if (listFor(FAV_GROUP).length) g.push(FAV_GROUP);
     g.push('Todos');
     var seen = {};
+    if (listFor(FUT_GROUP).length) { g.push(FUT_GROUP); seen[FUT_GROUP] = 1; }   // ⚽ Fútbol va justo después de Todos
     listFor('Todos').forEach(function (c) { if (!seen[c.group]) { seen[c.group] = 1; g.push(c.group); } });
     if (intlCount()) g.push(INTL_GROUP);
     if (Object.keys(hiddenSet).length && listFor(HID_GROUP).length) g.push(HID_GROUP);
@@ -1869,6 +1881,7 @@
       toast(LIST_H ? 'Lista horizontal (carrusel) con controles de tiempo' : 'Lista vertical (lateral)');
       return;
     }
+    if (el.id === 'checkUpdate' && IS_WEB) { webCheckUpdate(); return; }
     if (el.id === 'checkUpdate') {
       if (IS_ANDROID && typeof window.Android.checkUpdateNow === 'function') { toast('Buscando actualización…'); window.Android.checkUpdateNow(); }
       else if (IS_ANDROID) toast('Para buscar actualizaciones con este botón instala la nueva APK de FuturaTV');
@@ -2269,9 +2282,21 @@
     if (mode === 'none' && !menuOpen && !searchOpen) applyUpdate();
     else toast('Nueva versión ' + version + ' descargada. Se aplicará al cerrar el video.');
   };
+  // Navegador: buscar la versión nueva (se baja de nuevo saltándose la copia guardada del navegador)
+  function webCheckUpdate() {
+    toast('Buscando actualización…');
+    fetch('version.json?t=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (j) {
+      var files = (j.files || []).filter(function (f) { return /\.(js|css|html|m3u|json)$/.test(f); }).concat(['index.html', './']);
+      var fresh = files.map(function (f) { return fetch(f, { cache: 'reload' }).catch(function () { }); });
+      return Promise.all(fresh).then(function () {
+        if (j.version !== APP_BUILD) { toast('Actualizando a la versión ' + j.version + '…'); setTimeout(function () { location.reload(); }, 600); }
+        else toast('✅ Ya tienes la última versión (' + APP_BUILD + ')');
+      });
+    }).catch(function () { toast('No se pudo revisar la actualización (¿sin internet?)'); });
+  }
   getText('version.json').then(function (t) {
     var v = JSON.parse(t).version;
-    $('appVersion').textContent = 'FuturaTV versión ' + APP_BUILD + (IS_ANDROID ? ' · se actualiza sola desde internet' : '') +
+    $('appVersion').textContent = 'FuturaTV versión ' + APP_BUILD + (IS_ANDROID ? ' · se actualiza sola desde internet' : IS_WEB ? ' · versión web' : '') +
       (v !== APP_BUILD ? ' · ⚠ actualización incompleta (' + v + '): aprieta «Buscar actualización ahora»' : '');
   }).catch(function () { });
 
