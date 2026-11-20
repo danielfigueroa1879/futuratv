@@ -15,6 +15,7 @@
       <button class="tab focusable" data-view="apps">Apps</button>
       <button class="tab focusable" data-view="settings">Ajustes</button>
       <button class="tab focusable exit-btn" id="exitBtn" title="Cerrar la app"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5v8"/><path d="M7.05 6.6a7.5 7.5 0 1 0 9.9 0"/></svg>Salir</button>
+      <button class="tab focusable phone-only tv-btn" id="tvBtn" title="Controlar la TV">📺 TV</button>
       <button class="tab focusable pipmove hidden" id="pipMoveBtn">⇲ Mover PiP</button>
     </nav>
     <div class="clock" id="clock"></div>
@@ -65,10 +66,20 @@
     <div class="row"><button class="btn focusable" id="ytAdd">＋ Agregar a favoritos</button></div>
     <p class="hint" id="ytInfo"></p>
     <h2 class="sub tv-only">📱 Control remoto desde el celular</h2>
-    <p class="hint tv-only">Con el celular conectado al mismo Wi-Fi: cambia canales, pon favoritos, busca y envía videos de YouTube.</p>
-    <div class="row tv-only"><button class="btn focusable" id="remoteOn">Conectar un celular (código QR)</button><button class="btn ghost focusable" id="remoteOff">Desconectar celulares</button></div>
+    <p class="hint tv-only">Con el celular en el mismo Wi-Fi: desde la <b>app FuturaTV del celular</b> (botón 📺 TV, con el código de 4 cifras) o escaneando el QR. Cambia canales, pon tus favoritos del celular, sube el volumen y mira la TV en el celular.</p>
+    <div class="row tv-only"><button class="btn focusable" id="remoteOn">Conectar un celular (código y QR)</button><button class="btn ghost focusable" id="remoteOff">Desconectar celulares</button></div>
     <div class="link-qr hidden" id="linkBox"><div class="qr" id="linkQr"></div><p class="hint" id="linkTxt"></p></div>
     <p class="hint tv-only" id="remoteInfo"></p>
+    <h2 class="sub phone-only" id="tvSec">📺 Controlar la TV con este celular</h2>
+    <p class="hint phone-only">1) En la TV: Ajustes → «Conectar un celular». Aparece un <b>código de 4 cifras</b>.<br>2) Con este celular en el <b>mismo Wi-Fi</b>: «Buscar mi TV», escribe el código y «Conectar».</p>
+    <div class="row phone-only"><button class="btn focusable" id="tvScan">🔍 Buscar mi TV</button><button class="btn ghost focusable hidden" id="tvForget">Olvidar esta TV</button></div>
+    <div class="tv-found phone-only" id="tvFound"></div>
+    <label class="field phone-only"><span>Código de 4 cifras que muestra la TV</span>
+      <input id="tvPin" class="focusable" type="text" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="1234"></label>
+    <label class="field phone-only"><span>Dirección de la TV (se llena sola al buscar; también aparece en la TV)</span>
+      <input id="tvAddr" class="focusable" type="text" inputmode="url" spellcheck="false" autocomplete="off" placeholder="192.168.1.20:8765"></label>
+    <div class="row phone-only"><button class="btn focusable" id="tvPair">Conectar con la TV</button></div>
+    <p class="hint phone-only" id="tvInfo"></p>
     <h2 class="sub">Lista de canales en pantalla completa</h2>
     <div class="row"><button class="btn ghost focusable" id="listMode"></button></div>
     <div class="row"><button class="btn ghost focusable" id="prevMode"></button></div>
@@ -161,5 +172,9 @@
 
   <script src="lib/hls.min.js"></script>
   <script src="app.js"></script>
+<div class="tv-remote hidden" id="tvRemote">
+  <div class="tvr-bar"><b>📺 Control de la TV</b><span id="tvrName"></span><button id="tvClose">✕ Cerrar</button></div>
+  <iframe id="tvFrame" title="Control de la TV" allow="autoplay; fullscreen"></iframe>
+</div>
 </body>
 </html>

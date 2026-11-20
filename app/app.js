@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.4.1';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.5.0';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -196,7 +196,10 @@
         var q = window.qrcode(0, 'M'); q.addData(url); q.make();
         $('linkQr').innerHTML = q.createSvgTag({ cellSize: 6, margin: 2, scalable: true });
       } catch (e) { $('linkQr').innerHTML = ''; }
-      $('linkTxt').innerHTML = 'Escanea este código con la cámara del celular (conectado al <b>mismo Wi-Fi</b>): se abre el <b>control remoto</b>.<br>' +
+      var pin = ''; try { pin = window.Android.remotePin ? window.Android.remotePin() : ''; } catch (e) { }
+      $('linkTxt').innerHTML = (pin ? '<span class="pin-big">Código para la app FuturaTV del celular: <b>' + escapeHtml(pin) + '</b></span>' +
+        'En el celular: FuturaTV → <b>📺 TV</b> → «Buscar mi TV» y escribe este código.<br>' : '') +
+        'O escanea este código con la cámara del celular (conectado al <b>mismo Wi-Fi</b>): se abre el <b>control remoto</b>.<br>' +
         'O abre en el navegador del celular: <b>' + escapeHtml(url) + '</b><br>Para cortar la conexión: «Desconectar celulares» (el código cambia).';
       store('remoteOn', '1'); updateRemoteInfo();
       $('linkBox').classList.remove('hidden');
@@ -235,6 +238,7 @@
   window.mitvRemoteEvent = function (ev) {
     if (ev === 'hello') toast('📱 Celular conectado como control remoto');
     else if (ev === 'bye') toast('📱 Un celular se desconectó');
+    else if (ev === 'pin') { toast('📱 Código equivocado varias veces: la TV puso un código nuevo'); if (!$('linkBox').classList.contains('hidden')) showLinkQr(); }
     pushRemoteState(); updateRemoteInfo();
   };
   window.mitvRemote = function (c, v) {             // órdenes del celular
@@ -265,11 +269,141 @@
     }
     if (c === 'playres') { var j = +v; if (remoteRes[j]) playChannel(remoteRes, j, SEARCH_GROUP, 'full'); pushRemoteState(); return; }
     if (c === 'yt') { window.mitvRemoteLink(v); return; }
+    if (c === 'phonefav') {                          // un favorito del celular: se pone en la TV
+      var o = {}; try { o = JSON.parse(v) || {}; } catch (e) { return; }
+      if (o.yt) { openYouTube({ yt: o.yt, name: o.name || 'YouTube' }); return; }
+      var key = normName(o.name || ''), ti = -1, grp = FAV_GROUP, tl = listFor(FAV_GROUP);
+      var find = function () { ti = -1; tl.forEach(function (x, n) { if (ti < 0 && chKey(x) === key) ti = n; }); };
+      find();
+      if (ti < 0) { grp = 'Todos'; tl = listFor('Todos'); find(); }                 // no es favorito en la TV
+      if (ti < 0) { tl = channels.filter(function (x) { return !x.isCountry && !x.yt; }); find(); }
+      if (ti < 0 && o.url) { tl = [{ name: o.name || 'Canal', url: o.url, logo: o.logo || '', group: 'Celular' }]; ti = 0; }
+      if (ti >= 0) { if (sideOpen) closeSide(); playChannel(tl, ti, grp, 'full'); }
+      pushRemoteState(); return;
+    }
+    if (c === 'addfavs') {                           // copiar los favoritos del celular a la TV
+      var arr = []; try { arr = JSON.parse(v) || []; } catch (e) { return; }
+      var added = 0, miss = 0, yts = ytLoad();
+      arr.forEach(function (o) {
+        if (o.yt) {
+          if (!yts.some(function (y) { return y.id === o.yt; })) {
+            var yo = { id: o.yt, title: String(o.name || 'Video de YouTube').slice(0, 80) }; yts.push(yo);
+            var yc = ytChannel(yo); channels.push(yc); favs[chKey(yc)] = 1; added++;
+          }
+          return;
+        }
+        var k2 = normName(o.name || '');
+        if (!channels.some(function (x) { return chKey(x) === k2; })) { miss++; return; }
+        if (!favs[k2]) { favs[k2] = 1; delete hiddenSet[k2]; added++; }
+      });
+      store('ytFavs', JSON.stringify(yts)); saveSet('favs', favs); saveSet('hidden', hiddenSet);
+      refreshChannels(); ytInfo();
+      toast('★ Del celular: ' + added + ' favorito' + (added === 1 ? '' : 's') + ' nuevo' + (added === 1 ? '' : 's') + ' en la TV' + (miss ? ' · ' + miss + ' no están en la lista de la TV' : ''));
+      pushRemoteState(); return;
+    }
   };
   // Si había un celular conectado, la TV vuelve a quedar lista para él al abrir la app
   setTimeout(function () {
     if (store('remoteOn') === '1' && IS_ANDROID && typeof window.Android.startLinkServer === 'function') { try { window.Android.startLinkServer(); } catch (e) { } }
   }, 1500);
+
+  // ---------- Celular: la app FuturaTV encuentra la TV, se empareja con su código y la controla ----------
+  var tvScanning = false;
+  function tvSaved() { return { host: store('tvHost') || '', key: store('tvKey') || '', name: store('tvName') || '' }; }
+  function tvMsg(t) { if ($('tvInfo')) $('tvInfo').textContent = t; }
+  function tvUpdateUi() {
+    var t = tvSaved();
+    if ($('tvForget')) $('tvForget').classList.toggle('hidden', !t.key);
+    if (t.key && !tvScanning) tvMsg('✅ Conectado con ' + (t.name || 'la TV') + ' (' + t.host + '). Toca «📺 TV» arriba para controlarla.');
+    if (t.host && $('tvAddr') && !$('tvAddr').value) $('tvAddr').value = t.host;
+  }
+  function tvFetch(host, path, ms) {
+    var ctl = window.AbortController ? new AbortController() : null;
+    var to = setTimeout(function () { if (ctl) ctl.abort(); }, ms || 2500);
+    return fetch('http://' + host + path, { cache: 'no-store', signal: ctl ? ctl.signal : undefined })
+      .then(function (r) { clearTimeout(to); return r.text(); }, function (e) { clearTimeout(to); throw e; });
+  }
+  function tvScan(then) {
+    if (!IS_ANDROID || typeof window.Android.scanTv !== 'function') { tvMsg('Para esto instala la APK nueva de FuturaTV (2.5.0) en el celular.'); return; }
+    if (tvScanning) return;
+    tvScanning = true; tvMsg('🔍 Buscando la TV en tu Wi-Fi… (unos segundos)'); $('tvFound').innerHTML = '';
+    window.mitvTvFound = function (json) {
+      tvScanning = false;
+      var list = []; try { list = JSON.parse(json) || []; } catch (e) { }
+      if (then) { then(list); return; }
+      if (!list.length) { tvMsg('No encontré la TV. Revisa: mismo Wi-Fi, FuturaTV abierta en la TV y en Ajustes → «Conectar un celular». También puedes escribir la dirección que muestra la TV.'); return; }
+      list.forEach(function (t) {
+        var b = document.createElement('button'); b.textContent = '📺 ' + (t.name || 'TV') + ' · ' + t.host;
+        b.addEventListener('click', function () {
+          Array.prototype.forEach.call($('tvFound').children, function (x) { x.classList.remove('sel'); });
+          b.classList.add('sel'); $('tvAddr').value = t.host; store('tvName', t.name || ''); $('tvPin').focus();
+        });
+        $('tvFound').appendChild(b);
+      });
+      $('tvAddr').value = list[0].host; store('tvName', list[0].name || ''); $('tvFound').firstChild.classList.add('sel');
+      tvMsg(list.length === 1 ? 'Encontré tu TV. Escribe el código de 4 cifras que aparece en la TV y toca «Conectar con la TV».' : 'Encontré ' + list.length + ' TVs: elige la tuya y escribe su código.');
+    };
+    try { window.Android.scanTv(); } catch (e) { tvScanning = false; }
+  }
+  function tvPair() {
+    var host = ($('tvAddr').value || '').trim().replace(/^https?:\/\//, '').replace(/\/.*$/, ''), pin = ($('tvPin').value || '').replace(/\D/g, '');
+    if (host && host.indexOf(':') < 0) host += ':8765';
+    if (!host) { tvMsg('Primero «Buscar mi TV» (o escribe la dirección que muestra la TV).'); return; }
+    if (pin.length !== 4) { tvMsg('Escribe el código de 4 cifras que muestra la TV.'); $('tvPin').focus(); return; }
+    tvMsg('Conectando…');
+    tvFetch(host, '/pair?pin=' + pin, 4000).then(function (t) {
+      t = (t || '').trim();
+      if (!t || t === 'NOK' || t.length > 40) { tvMsg('Código incorrecto. Míralo de nuevo en la TV (Ajustes → «Conectar un celular»).'); return; }
+      store('tvHost', host); store('tvKey', t); $('tvPin').value = '';
+      if (document.activeElement) document.activeElement.blur();
+      tvUpdateUi(); tvOpen();
+    }).catch(function () { tvMsg('No pude conectar con ' + host + '. ¿Mismo Wi-Fi? ¿La TV tiene abierto «Conectar un celular»?'); });
+  }
+  function tvForget() {
+    var t = tvSaved();
+    store('tvHost', ''); store('tvKey', ''); store('tvName', ''); tvClose();
+    $('tvFound').innerHTML = ''; tvMsg('Este celular olvidó la TV.' + (t.key ? '' : '')); tvUpdateUi();
+  }
+  function tvPhoneFavs() {
+    return listFor(FAV_GROUP).slice(0, 300).map(function (c) { return { name: c.name, url: c.yt ? '' : c.url, logo: c.logo || '', yt: c.yt || '' }; });
+  }
+  function tvShow(host, key) {
+    var f = $('tvFrame');
+    $('tvrName').textContent = (store('tvName') || '') + ' · ' + host;
+    var src = 'http://' + host + '/?k=' + encodeURIComponent(key) + '&app=1';
+    if (f.getAttribute('src') !== src) f.setAttribute('src', src);
+    else { try { f.contentWindow.postMessage({ type: 'phoneFavs', favs: tvPhoneFavs() }, '*'); } catch (e) { } }
+    $('tvRemote').classList.remove('hidden');
+  }
+  function tvOpen() {
+    var t = tvSaved();
+    if (!t.key) { showView('settings'); setTimeout(function () { try { $('tvSec').scrollIntoView({ block: 'start' }); } catch (e) { } }, 50); tvUpdateUi(); if (!t.host) tvScan(); return; }
+    if (mode === 'full') minimize();
+    tvMsg('Conectando con la TV…');
+    tvFetch(t.host, '/check?k=' + encodeURIComponent(t.key), 2500).then(function (r) {
+      if (r.trim() === 'OK') { tvShow(t.host, t.key); tvUpdateUi(); return; }
+      store('tvKey', ''); tvUpdateUi(); tvOpen(); toast('La TV cambió su código: escribe el nuevo');
+    }).catch(function () {                       // la TV cambió de dirección en el Wi-Fi: se busca de nuevo con el mismo código
+      toast('🔍 Buscando la TV…');
+      tvScan(function (list) {
+        var tries = list.map(function (x) { return tvFetch(x.host, '/check?k=' + encodeURIComponent(t.key), 2500).then(function (r) { return r.trim() === 'OK' ? x : null; }, function () { return null; }); });
+        Promise.all(tries).then(function (rs) {
+          var hit = rs.filter(Boolean)[0];
+          if (hit) { store('tvHost', hit.host); store('tvName', hit.name || ''); tvShow(hit.host, t.key); tvUpdateUi(); }
+          else { tvMsg('No encuentro la TV. ¿Está encendida, con FuturaTV abierta y en el mismo Wi-Fi?'); toast('No encuentro la TV en este Wi-Fi'); showView('settings'); }
+        });
+      });
+    });
+  }
+  function tvClose() { $('tvRemote').classList.add('hidden'); }
+  function tvRemoteOpen() { return $('tvRemote') && !$('tvRemote').classList.contains('hidden'); }
+  window.addEventListener('message', function (e) {
+    var d = e.data || {};
+    if (d.type === 'remoteReady') { try { e.source.postMessage({ type: 'phoneFavs', favs: tvPhoneFavs() }, '*'); } catch (x) { } }
+    else if (d.type === 'bye') { store('tvKey', ''); tvClose(); tvUpdateUi(); tvMsg('Desconectado de la TV.'); }
+  });
+  if ($('tvClose')) $('tvClose').addEventListener('click', function (e) { e.stopPropagation(); tvClose(); });
+  if (!IS_PHONE && $('tvBtn')) $('tvBtn').remove();
 
   window.mitvRemoteLink = function (u) {               // llega un enlace enviado desde el celular
     if (!ytId(u)) { toast('Llegó un enlace que no es de YouTube: ' + String(u).slice(0, 60)); return; }
@@ -399,6 +533,7 @@
   var currentView = 'apps';
   function showView(name) {
     currentView = name;
+    if (name === 'settings' && IS_PHONE) tvUpdateUi();
     ['apps', 'live', 'settings'].forEach(function (v) { $('view-' + v).classList.toggle('hidden', v !== name); });
     Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (t) {
       t.classList.toggle('active', t.getAttribute('data-view') === name);
@@ -1553,6 +1688,10 @@
       if (first && searchQuery.trim()) setFocus(first); else el.focus();
       return;
     }
+    if (el.id === 'tvBtn') { tvOpen(); return; }
+    if (el.id === 'tvScan') { tvScan(); return; }
+    if (el.id === 'tvPair') { tvPair(); return; }
+    if (el.id === 'tvForget') { tvForget(); return; }
     if (el.classList.contains('tab')) { showView(el.getAttribute('data-view')); return; }
     if (el.hasAttribute('data-app')) { launchApp(APPS[+el.getAttribute('data-app')]); return; }
     if (el.hasAttribute('data-group')) {
@@ -1616,6 +1755,7 @@
 
   // Devuelve true si manejó ATRÁS; false si ya estamos en el inicio (la app debe cerrarse).
   function goBack() {
+    if (tvRemoteOpen()) { tvClose(); return true; }      // celular: cierra el control de la TV
     if (pipMoving) { stopPipMove(); return true; }       // ATRÁS en modo mover: deja la ventana ahí
     if (wallBig) { wallCollapse(); return true; }        // muro de favoritos: el agrandado vuelve a su lugar
     if (listening) { cancelVoice(); return true; }

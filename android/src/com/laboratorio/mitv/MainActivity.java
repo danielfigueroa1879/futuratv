@@ -516,6 +516,54 @@ public class MainActivity extends Activity {
         }
         return linkToken;
     }
+    /** Código de 4 cifras que muestra la TV para emparejar la app FuturaTV de un celular. */
+    private volatile int pinFails = 0;
+    private String pairPin() {
+        String p = prefs().getString("pairPin", "");
+        if (p.length() != 4) p = newPin();
+        return p;
+    }
+    private String newPin() {
+        String p = String.format(java.util.Locale.US, "%04d", new java.security.SecureRandom().nextInt(10000));
+        prefs().edit().putString("pairPin", p).apply();
+        pinFails = 0;
+        return p;
+    }
+    /** Busca TVs con FuturaTV en la misma red Wi-Fi (la llama la app del celular). Responde en window.mitvTvFound(lista). */
+    private void scanTv() {
+        new Thread(() -> {
+            final org.json.JSONArray found = new org.json.JSONArray();
+            String ip = localIp();
+            if (ip != null && ip.lastIndexOf('.') > 0) {
+                final String base = ip.substring(0, ip.lastIndexOf('.') + 1);
+                java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(96);
+                for (int port = 8765; port <= 8767; port++) {
+                    for (int h = 1; h < 255; h++) {
+                        final String host = base + h; final int pt = port;
+                        if (host.equals(ip)) continue;
+                        pool.execute(() -> {
+                            try (Socket so = new Socket()) {
+                                so.connect(new InetSocketAddress(host, pt), 400);
+                                so.setSoTimeout(1500);
+                                OutputStream o = so.getOutputStream();
+                                o.write(("GET /info HTTP/1.0\r\nHost: " + host + "\r\n\r\n").getBytes("UTF-8")); o.flush();
+                                String r = readAll(so.getInputStream());
+                                int b = r.indexOf("{\"app\":\"FuturaTV\"");
+                                if (b >= 0) {
+                                    JSONObject j = new JSONObject(r.substring(b));
+                                    j.put("host", host + ":" + pt);
+                                    synchronized (found) { found.put(j); }
+                                }
+                            } catch (Exception ignored) { }
+                        });
+                    }
+                }
+                pool.shutdown();
+                try { pool.awaitTermination(20, java.util.concurrent.TimeUnit.SECONDS); } catch (Exception ignored) { }
+            }
+            js("window.mitvTvFound && window.mitvTvFound(" + JSONObject.quote(found.toString()) + ")");
+        }).start();
+    }
     private int remoteCount() {
         long now = System.currentTimeMillis();
         for (Map.Entry<String, Long> e : remoteSessions.entrySet()) if (now - e.getValue() > SESSION_ALIVE_MS) remoteSessions.remove(e.getKey());
@@ -525,6 +573,7 @@ public class MainActivity extends Activity {
         remoteSessions.clear();
         linkToken = randomId(10);                                   // el QR anterior deja de servir
         prefs().edit().putString("pairToken", linkToken).apply();
+        newPin();                                                   // y el código de 4 cifras también
         stopLinkServer();
     }
     private static Map<String, String> form(String body) {
@@ -675,7 +724,7 @@ public class MainActivity extends Activity {
             String[] parts = first.split(" ");
             String path = parts.length > 1 ? parts[1] : "/";
             String body = "";
-            if (len > 0 && len < 8192) {
+            if (len > 0 && len < 300000) {
                 byte[] buf = new byte[len];
                 int off = 0, n;
                 while (off < len && (n = in.read(buf, off, len - off)) > 0) off += n;
@@ -699,7 +748,24 @@ public class MainActivity extends Activity {
                 os1.flush();
                 return;
             }
-            if (route.equals("/hello")) {                                 // un celular se conecta con el código del QR
+            if (route.equals("/info")) {                                  // para que la app del celular encuentre esta TV
+                type = "application/json; charset=utf-8";
+                JSONObject j = new JSONObject();
+                j.put("app", "FuturaTV"); j.put("name", (Build.MANUFACTURER + " " + Build.MODEL).trim());
+                resp = j.toString();
+            } else if (route.equals("/pair")) {                            // la app del celular escribe el código de 4 cifras
+                type = "text/plain; charset=utf-8";
+                String pin = f.get("pin") == null ? "" : f.get("pin").trim();
+                if (pin.length() == 4 && pin.equals(pairPin())) { pinFails = 0; resp = pairToken(); }
+                else {
+                    resp = "NOK";
+                    if (++pinFails >= 5) { newPin(); js("window.mitvRemoteEvent && window.mitvRemoteEvent('pin')"); }   // evita que lo adivinen
+                    try { Thread.sleep(700); } catch (Exception ignored) { }
+                }
+            } else if (route.equals("/check")) {                           // ¿sigue valiendo el código guardado en el celular?
+                type = "text/plain; charset=utf-8";
+                resp = pairToken().equals(f.get("k")) ? "OK" : "NOK";
+            } else if (route.equals("/hello")) {                                 // un celular se conecta con el código del QR
                 type = "text/plain; charset=utf-8";
                 if (pairToken().equals(f.get("k"))) {
                     String sid = randomId(16);
@@ -711,7 +777,13 @@ public class MainActivity extends Activity {
                 type = "text/plain; charset=utf-8";
                 if (sessionOk(f.get("sid"))) {
                     String c = f.get("c") == null ? "" : f.get("c"), v = f.get("v") == null ? "" : f.get("v");
-                    js("window.mitvRemote && window.mitvRemote(" + JSONObject.quote(c) + "," + JSONObject.quote(v) + ")");
+                    if (c.equals("vol")) {                                 // volumen del equipo (muestra la barra de volumen)
+                        try {
+                            android.media.AudioManager am = (android.media.AudioManager) getSystemService(AUDIO_SERVICE);
+                            am.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, v.startsWith("-") ? android.media.AudioManager.ADJUST_LOWER
+                                    : android.media.AudioManager.ADJUST_RAISE, android.media.AudioManager.FLAG_SHOW_UI);
+                        } catch (Exception ignored) { }
+                    } else js("window.mitvRemote && window.mitvRemote(" + JSONObject.quote(c) + "," + JSONObject.quote(v) + ")");
                     resp = "OK";
                 } else resp = "DESCONECTADO";
             } else if (route.equals("/state")) {                           // qué se ve en la TV + favoritos
@@ -744,7 +816,7 @@ public class MainActivity extends Activity {
             byte[] out = resp.getBytes("UTF-8");
             OutputStream os = s.getOutputStream();
             os.write(("HTTP/1.1 200 OK\r\nContent-Type: " + type + "\r\nContent-Length: " + out.length
-                    + "\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n").getBytes("UTF-8"));
+                    + "\r\nAccess-Control-Allow-Origin: *\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n").getBytes("UTF-8"));
             os.write(out);
             os.flush();
         } catch (Exception ignored) {
@@ -852,6 +924,13 @@ public class MainActivity extends Activity {
         public void stopLinkServer() { MainActivity.this.stopLinkServer(); }
 
         /** Control remoto: cuántos celulares están conectados ahora. */
+        @JavascriptInterface
+        public String remotePin() { return MainActivity.this.pairPin(); }
+
+        /** Celular: busca la TV en el Wi-Fi; la lista llega a window.mitvTvFound. */
+        @JavascriptInterface
+        public void scanTv() { MainActivity.this.scanTv(); }
+
         @JavascriptInterface
         public int remoteCount() { return MainActivity.this.remoteCount(); }
 

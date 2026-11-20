@@ -53,6 +53,8 @@
   .vbox video { display: block; width: 100%; aspect-ratio: 16 / 9; background: #000; }
   .vbox .vbar { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 10px; background: var(--card); font-size: 13px; color: var(--mut); }
   .vbox .vbar button { border: 0; border-radius: 10px; padding: 8px 12px; font: inherit; font-size: 13px; color: #fecaca; background: rgba(239,68,68,.18); }
+  .row.vol { grid-template-columns: 1fr 1fr; }
+  .copyfav { width: 100%; height: 50px; margin-top: 10px; font-size: 15px; font-weight: 700; background: rgba(139,92,246,.35); }
   .hidden { display: none !important; }
   .toast { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 20px); transform: translateX(-50%); background: #fff; color: #0b0f1a;
     padding: 10px 16px; border-radius: 12px; font-size: 14px; opacity: 0; transition: opacity .25s; pointer-events: none; max-width: 90vw; }
@@ -80,6 +82,16 @@
     <button data-c="mute" id="muteBtn">🔇<small>sonido</small></button>
     <button data-c="screen">⛶<small>pantalla</small></button>
   </section>
+  <section class="row vol">
+    <button data-c="vol" data-v="-1">🔉<small>volumen −</small></button>
+    <button data-c="vol" data-v="1">🔊<small>volumen +</small></button>
+  </section>
+
+  <div class="hidden" id="mineBox">
+    <h3>📱 Mis favoritos del celular · toca uno para verlo en la TV</h3>
+    <div class="list" id="mine"></div>
+    <button class="btn copyfav" id="copyFav">★ Copiar mis favoritos a la TV</button>
+  </div>
 
   <h3>★ Favoritos · toca uno para verlo en la TV</h3>
   <div class="list" id="favs"><div class="empty">Cargando…</div></div>
@@ -177,7 +189,7 @@
   });
 
   function render(st) {
-    lastSt = st; syncWatch(st);
+    lastSt = st; syncWatch(st); if (mine.length) renderMine();
     $('now').innerHTML = st.now ? 'En la TV: <b></b>' : 'En la TV: sin canal puesto';
     if (st.now) $('now').querySelector('b').textContent = st.now + (st.mode === 'pip' ? ' (ventana chica)' : '');
     $('muteBtn').firstChild.textContent = st.muted ? '🔇' : '🔊';
@@ -214,8 +226,31 @@
     sid = ''; try { localStorage.removeItem(KEY); } catch (e) { }
     watching = false; stopWatch();
     showOff('Este celular ya no controla la TV.');
+    if (inApp) { try { parent.postMessage({ type: 'bye' }, '*'); } catch (e) { } }
   });
   $('re').addEventListener('click', function () { manualOff = false; hello(); });
+
+  // ---------- Dentro de la app FuturaTV del celular: sus favoritos se pueden poner o copiar en la TV ----------
+  var mine = [];
+  function renderMine() {
+    var m = $('mine'); m.innerHTML = '';
+    mine.forEach(function (c) {
+      m.appendChild(item(c.name, c.yt ? 'YouTube' : '', c.name === lastSt.now, function () {
+        cmd('phonefav', JSON.stringify(c)); toast('▶ En la TV: ' + c.name);
+      }));
+    });
+    if (!mine.length) m.innerHTML = '<div class="empty">Aún no tienes favoritos en el celular.</div>';
+  }
+  window.addEventListener('message', function (e) {
+    var d = e.data || {};
+    if (d.type === 'phoneFavs') { mine = d.favs || []; $('mineBox').classList.remove('hidden'); renderMine(); }
+  });
+  $('copyFav').addEventListener('click', function () {
+    if (!mine.length) { toast('No hay favoritos en el celular'); return; }
+    cmd('addfavs', JSON.stringify(mine)); toast('★ Copiando ' + mine.length + ' favoritos a la TV…');
+  });
+  var inApp = /[?&]app=1/.test(location.search);
+  if (inApp) { try { parent.postMessage({ type: 'remoteReady' }, '*'); } catch (e) { } }
 
   if (!k) showOff('Abre esta página escaneando el QR que muestra la TV (Ajustes → Control remoto).');
   else if (sid) startPoll(); else hello();
