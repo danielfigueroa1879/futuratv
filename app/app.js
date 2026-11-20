@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.5.0';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.5.1';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -1257,12 +1257,13 @@
     $(LIST_H ? 'hbar' : 'side').classList.remove('hidden');   // primero visible: así la vista previa se ubica bien
     renderSide(true);
     $('player').classList.toggle('list-h', LIST_H);
+    $('player').classList.toggle('side-v', !LIST_H);              // celular: con la lista abierta no se tapa con nombre ni botones
     if (LIST_H) { hbMarkCtrl(); hbTimeTick(); }
     $('osd').classList.add('fade');
     bumpSide();
   }
   function closeSide() {
-    sideOpen = false; clearTimeout(sideTimer);
+    sideOpen = false; clearTimeout(sideTimer); sidePhoneKey = ''; $('player').classList.remove('side-v');
     sidePrevStop();
     $('side').classList.add('hidden'); $('hbar').classList.add('hidden');
   }
@@ -1285,6 +1286,7 @@
   var SIDE_ROWS = IS_PHONE ? Math.max(12, Math.ceil(Math.max(window.innerHeight, window.innerWidth) / 54) + 2) : 10;
   function updateSideMarks() {
     if (LIST_H) { hbRender(); sidePrevSchedule(); return; }
+    if (IS_PHONE) { sideRenderPhone(); return; }
     var n = sideList.length;
     var start = Math.max(0, Math.min(sideIdx - Math.floor(SIDE_ROWS / 2), n - SIDE_ROWS));
     var html = '';
@@ -1486,6 +1488,38 @@
     if (sl.hls) { try { sl.hls.destroy(); } catch (e) { } sl.hls = null; }
     sl.v.removeAttribute('src'); try { sl.v.load(); } catch (e) { }
   }
+  // Celular, lista vertical: todas las filas en una lista con desplazamiento nativo (fluido, con inercia), sin vista previa
+  var sidePhoneKey = '';
+  function sideRenderPhone() {
+    var box = $('sideList'), n = sideList.length;
+    var key = sideGroup + '|' + n + '|' + (nowCh ? nowCh.name : '') + '|' + sideIdx;
+    $('sideCount').textContent = n ? n + ' canales' : '';
+    if (key === sidePhoneKey && box.childNodes.length) return;     // nada cambió: no se redibuja (no interrumpe el desplazamiento)
+    var same = sidePhoneKey.split('|')[0] === sideGroup && box.childNodes.length;
+    sidePhoneKey = key;
+    var html = '';
+    for (var i = 0; i < n; i++) {
+      var c = sideList[i];
+      html += '<div class="srow' + (nowCh && c === nowCh ? ' now' : '') + '" data-s="' + i + '">' +
+        (c.logo ? '<img src="' + escapeHtml(c.logo) + '" loading="lazy" decoding="async" alt="" data-i="' + escapeHtml(c.name.charAt(0)) + '" onerror="mitvImgFail(this)">'
+          : '<div class="ph">' + escapeHtml(c.name.charAt(0)) + '</div>') +
+        '<span class="nm">' + escapeHtml(c.name) + '</span>' + (isFav(c) ? '<span class="star">★</span>' : '') + '</div>';
+    }
+    var top = box.scrollTop;
+    box.innerHTML = html || '<div class="srow empty">Sin canales</div>';
+    if (same) box.scrollTop = top;                                  // misma lista: queda donde estaba
+    else {                                                          // al abrir: el canal que estás viendo queda al medio
+      var row = box.querySelector('.srow.now') || box.children[Math.min(sideIdx, n - 1)];
+      box.scrollTop = row ? Math.max(0, row.offsetTop - box.clientHeight / 2 + row.offsetHeight / 2) : 0;
+    }
+    if (sideOpen) warmChannel(sideList[sideIdx]);
+  }
+  if (IS_PHONE) {
+    var sideScrollT = 0;
+    $('sideList').addEventListener('scroll', function () {        // mientras se recorre, la lista no se cierra sola
+      var t = Date.now(); if (t - sideScrollT > 1000) { sideScrollT = t; if (sideOpen) bumpSide(); }
+    }, { passive: true });
+  }
   function sidePrevStop() {
     clearTimeout(prevTimer);
     if (prevSlots) prevSlots.forEach(slotStop);
@@ -1511,7 +1545,7 @@
     if (sideOpen) warmChannel(sideList[sideIdx]);
     var slots = prevInit();
     clearTimeout(prevTimer);
-    if (!sideOpen || mode !== 'full') { sidePrevStop(); return; }
+    if (!sideOpen || mode !== 'full' || (IS_PHONE && !LIST_H)) { sidePrevStop(); return; }   // celular, lista vertical: sin vista previa
     var want = [];                                 // [elemento, canal, esVecina]
     if (LIST_H) {
       Array.prototype.forEach.call($('hbTrack').querySelectorAll('.hcard[data-s]'), function (el) {
@@ -1925,7 +1959,7 @@
   function pressTarget(t) { return t.closest && (t.closest('[data-ch]') || t.closest('.srow[data-s]')); }
   document.addEventListener('touchstart', function (e) {
     var t = e.touches[0];
-    touchMoved = false; touchY0 = t.clientY; touchIdx0 = sideIdx;
+    touchMoved = false; suppressClick = false; touchY0 = t.clientY; touchIdx0 = sideIdx;   // cada toque nuevo empieza limpio
     var el = pressTarget(e.target);
     clearTimeout(pressTimer);
     if (!el) return;
@@ -1940,7 +1974,7 @@
     var dy = e.touches[0].clientY - touchY0;
     if (Math.abs(dy) > 10) { touchMoved = true; clearTimeout(pressTimer); }
     // Deslizar el dedo sobre la lista lateral la recorre
-    if (sideOpen && e.target.closest && e.target.closest('#side') && sideList.length) {
+    if (!IS_PHONE && sideOpen && e.target.closest && e.target.closest('#side') && sideList.length) {
       var rowH = ($('sideList').firstChild && $('sideList').firstChild.offsetHeight) || 56;
       var idx = Math.max(0, Math.min(sideList.length - 1, touchIdx0 - Math.round(dy / rowH)));
       if (idx !== sideIdx) { sideIdx = idx; updateSideMarks(); bumpSide(); }

@@ -361,7 +361,10 @@ html.phone, html.phone body { width: 100%; height: 100%; overflow: hidden; }
 .phone .player.pip { width: 58vw; height: calc(58vw * 9 / 16); max-width: 380px; max-height: 214px; right: 10px; bottom: calc(env(safe-area-inset-bottom) + 10px); border-radius: 12px; }
 .phone .pip-label { font-size: 13px; padding: 6px 10px; }
 .phone .pip-label small { display: none; }
-.phone .side { width: min(82vw, 360px); padding: calc(env(safe-area-inset-top) + 12px) 0 10px; touch-action: none; }
+.phone .side { width: min(82vw, 360px); padding: calc(env(safe-area-inset-top) + 12px) 0 10px; touch-action: pan-y; }
+.phone .side-list { overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; touch-action: pan-y; }
+.phone .side .srow { content-visibility: auto; contain-intrinsic-size: auto 54px; }
+.phone .side .srow:active { background: rgba(255,255,255,.12); }
 .phone .side-head { font-size: 17px; padding: 0 14px 6px; }
 .phone .side-count { padding: 0 14px 6px; font-size: 12px; }
 .phone .srow { height: 54px; font-size: 15px; padding: 0 14px; gap: 10px; }
@@ -855,3 +858,4 @@ html:not(.phone) .phone-only { display: none !important; }
 .tv-remote .tvr-bar span { flex: 1; color: #9aa6c2; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tv-remote .tvr-bar button { border: 0; border-radius: 10px; padding: 9px 14px; font: inherit; font-size: 14px; color: #fff; background: rgba(255,255,255,.12); }
 .tv-remote iframe { flex: 1; width: 100%; border: 0; background: #081033; }
+.phone #player.side-v .osd, .phone #player.side-v .ptools { display: none !important; }
