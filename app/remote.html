@@ -47,6 +47,12 @@
     background: rgba(8,16,51,.97); padding: 30px; text-align: center; }
   .off p { color: var(--mut); margin: 0; line-height: 1.5; }
   .off .btn { height: 52px; padding: 0 26px; font-size: 16px; font-weight: 700; background: var(--acc); }
+  .watch { width: 100%; height: 54px; margin-bottom: 14px; font-size: 16px; font-weight: 700;
+    background: linear-gradient(135deg, rgba(34,211,238,.35), rgba(139,92,246,.45)); }
+  .vbox { margin-bottom: 16px; border-radius: 16px; overflow: hidden; background: #000; box-shadow: 0 0 0 2px rgba(255,255,255,.18); }
+  .vbox video { display: block; width: 100%; aspect-ratio: 16 / 9; background: #000; }
+  .vbox .vbar { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 10px; background: var(--card); font-size: 13px; color: var(--mut); }
+  .vbox .vbar button { border: 0; border-radius: 10px; padding: 8px 12px; font: inherit; font-size: 13px; color: #fecaca; background: rgba(239,68,68,.18); }
   .hidden { display: none !important; }
   .toast { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 20px); transform: translateX(-50%); background: #fff; color: #0b0f1a;
     padding: 10px 16px; border-radius: 12px; font-size: 14px; opacity: 0; transition: opacity .25s; pointer-events: none; max-width: 90vw; }
@@ -56,6 +62,11 @@
 <body>
   <header><b>📺 FuturaTV</b><span id="st"><i></i><span id="stTxt">Conectando…</span></span></header>
   <div id="now">—</div>
+  <button class="btn watch" id="watchBtn">📺 Ver aquí lo que está en la TV</button>
+  <div class="vbox hidden" id="vbox">
+    <video id="pv" playsinline controls></video>
+    <div class="vbar"><span id="vinfo">Mismo canal que la TV · cambia solo</span><button id="watchOff">Dejar de ver</button></div>
+  </div>
 
   <section class="pad">
     <button class="sp"></button><button data-k="up" aria-label="Arriba">▲</button><button class="sp"></button>
@@ -94,6 +105,7 @@
   var $ = function (id) { return document.getElementById(id); };
   var k = new URLSearchParams(location.search).get('k') || '';
   var KEY = 'ftv-sid-' + k, sid = '', last = '', manualOff = false, poll = null, tt = null;
+  var watching = false, curUrl = '', hlsP = null, lastSt = {};
   try { sid = localStorage.getItem(KEY) || ''; } catch (e) { }
 
   function toast(t) { var el = $('toast'); el.textContent = t; el.classList.add('show'); clearTimeout(tt); tt = setTimeout(function () { el.classList.remove('show'); }, 1800); }
@@ -104,6 +116,7 @@
   }
   function setOn(on, txt) { $('st').classList.toggle('on', on); $('stTxt').textContent = txt; }
   function showOff(txt) {
+    if (typeof stopWatch === 'function') { watching = false; stopWatch(); }
     $('off').classList.remove('hidden'); $('offTxt').textContent = txt; setOn(false, 'Desconectado');
     clearInterval(poll); poll = null;
   }
@@ -111,6 +124,7 @@
     return post('/hello', { k: k }).then(function (t) {
       if (t === 'NOK' || !t) { sid = ''; showOff('La TV cambió el código o desconectó los celulares. Escanea de nuevo el QR en la TV (Ajustes → Control remoto).'); return false; }
       sid = t.trim(); try { localStorage.setItem(KEY, sid); } catch (e) { }
+      if (watching) { curUrl = ''; syncWatch(lastSt); }     // nueva sesión: el video vuelve a pedirse con ella
       $('off').classList.add('hidden'); setOn(true, 'Conectado'); startPoll(); return true;
     }).catch(function () { setOn(false, 'Sin conexión con la TV'); return false; });
   }
@@ -127,7 +141,43 @@
     if (sub) { var e = document.createElement('em'); e.textContent = sub; b.appendChild(e); }
     b.addEventListener('click', onClick); return b;
   }
+  // ---------- Ver la TV en el celular: el mismo canal, reenviado por la TV (sigue los cambios de canal) ----------
+  function loadHls(cb) {
+    if (window.Hls) { cb(); return; }
+    var sc = document.createElement('script'); sc.src = '/lib/hls.min.js'; sc.onload = cb;
+    sc.onerror = function () { toast('No se pudo cargar el reproductor'); }; document.head.appendChild(sc);
+  }
+  function stopWatch() {
+    if (hlsP) { try { hlsP.destroy(); } catch (e) { } hlsP = null; }
+    var v = $('pv'); v.removeAttribute('src'); try { v.load(); } catch (e) { }
+    curUrl = '';
+  }
+  function playUrl(u) {
+    stopWatch(); curUrl = u;
+    var v = $('pv'), src = '/p?sid=' + encodeURIComponent(sid) + '&u=' + encodeURIComponent(u);
+    if (window.Hls && window.Hls.isSupported()) {
+      hlsP = new window.Hls({ capLevelToPlayerSize: true, maxBufferLength: 15, backBufferLength: 10 });
+      hlsP.loadSource(src); hlsP.attachMedia(v);
+      hlsP.on(window.Hls.Events.ERROR, function (_, d) { if (d.fatal) $('vinfo').textContent = 'Este canal no se puede ver en el celular ahora'; });
+    } else v.src = src;                                   // iPhone: lo reproduce el propio navegador
+    var p = v.play(); if (p && p.catch) p.catch(function () { });
+    $('vinfo').textContent = 'Mismo canal que la TV · cambia solo';
+  }
+  function syncWatch(st) {
+    if (!watching) return;
+    if (!st.nowUrl) { if (curUrl) stopWatch(); $('vinfo').textContent = 'La TV no tiene un canal puesto'; return; }
+    if (st.nowUrl !== curUrl) playUrl(st.nowUrl);
+  }
+  $('watchBtn').addEventListener('click', function () {
+    watching = true; $('vbox').classList.remove('hidden'); $('watchBtn').classList.add('hidden');
+    loadHls(function () { syncWatch(lastSt); });
+  });
+  $('watchOff').addEventListener('click', function () {
+    watching = false; stopWatch(); $('vbox').classList.add('hidden'); $('watchBtn').classList.remove('hidden');
+  });
+
   function render(st) {
+    lastSt = st; syncWatch(st);
     $('now').innerHTML = st.now ? 'En la TV: <b></b>' : 'En la TV: sin canal puesto';
     if (st.now) $('now').querySelector('b').textContent = st.now + (st.mode === 'pip' ? ' (ventana chica)' : '');
     $('muteBtn').firstChild.textContent = st.muted ? '🔇' : '🔊';
@@ -162,6 +212,7 @@
     manualOff = true;
     post('/bye', { sid: sid }).catch(function () { });
     sid = ''; try { localStorage.removeItem(KEY); } catch (e) { }
+    watching = false; stopWatch();
     showOff('Este celular ya no controla la TV.');
   });
   $('re').addEventListener('click', function () { manualOff = false; hello(); });

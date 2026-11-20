@@ -45,6 +45,7 @@ import java.net.NetworkInterface;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URLDecoder;
+import java.net.URLEncoder;
 import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -541,6 +542,64 @@ public class MainActivity extends Activity {
         remoteSessions.put(sid, System.currentTimeMillis());
         return true;
     }
+    /** Archivo de la app (descargada o incluida en el APK). */
+    private byte[] appFile(String name) {
+        try {
+            InputStream in = useDownloaded() ? new FileInputStream(new File(wwwDir(), name)) : getAssets().open(name);
+            return readBytes(in);
+        } catch (Exception e) { return null; }
+    }
+    private static void writeHead(OutputStream os, int code, String type, long len) throws Exception {
+        os.write(("HTTP/1.1 " + code + (code == 200 ? " OK" : " Error") + "\r\nContent-Type: " + type
+                + (len >= 0 ? "\r\nContent-Length: " + len : "") + "\r\nCache-Control: no-store\r\nAccess-Control-Allow-Origin: *"
+                + "\r\nConnection: close\r\n\r\n").getBytes("UTF-8"));
+    }
+    /** Ver la TV en el celular: la TV reenvía el video del canal (listas y pedazos) por el Wi-Fi de la casa. */
+    private void proxyStream(Socket s, String url, String sid) throws Exception {
+        OutputStream os = s.getOutputStream();
+        if (url == null || !(url.startsWith("http://") || url.startsWith("https://"))) { writeHead(os, 400, "text/plain", 0); return; }
+        HttpURLConnection c = null;
+        for (int r = 0; r < 5; r++) {
+            c = (HttpURLConnection) new URL(url).openConnection();
+            c.setConnectTimeout(10000); c.setReadTimeout(20000); c.setInstanceFollowRedirects(true);
+            c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 12) FuturaTV");
+            int code = c.getResponseCode();
+            if (code >= 300 && code < 400 && c.getHeaderField("Location") != null) { url = new URL(new URL(url), c.getHeaderField("Location")).toString(); continue; }
+            break;
+        }
+        int code = c.getResponseCode();
+        if (code != 200) { writeHead(os, 502, "text/plain", 0); return; }
+        String base = c.getURL().toString(), type = c.getContentType() == null ? "" : c.getContentType().toLowerCase();
+        boolean playlist = type.contains("mpegurl") || base.toLowerCase().split("\\?")[0].endsWith(".m3u8");
+        InputStream in = c.getInputStream();
+        if (playlist) {                                            // reescribe cada dirección para que también pase por la TV
+            StringBuilder out = new StringBuilder();
+            String pre = "/p?sid=" + URLEncoder.encode(sid, "UTF-8") + "&u=";
+            for (String line : readAll(in).split("\n")) {
+                String t = line.trim();
+                if (t.isEmpty()) { out.append('\n'); continue; }
+                if (t.startsWith("#")) {
+                    int i = t.indexOf("URI=\"");
+                    if (i >= 0) {
+                        int j = t.indexOf('"', i + 5);
+                        if (j > i) t = t.substring(0, i + 5) + pre + URLEncoder.encode(new URL(new URL(base), t.substring(i + 5, j)).toString(), "UTF-8") + t.substring(j);
+                    }
+                    out.append(t).append('\n');
+                } else out.append(pre).append(URLEncoder.encode(new URL(new URL(base), t).toString(), "UTF-8")).append('\n');
+            }
+            byte[] b = out.toString().getBytes("UTF-8");
+            writeHead(os, 200, "application/vnd.apple.mpegurl", b.length);
+            os.write(b);
+        } else {                                                   // pedazo de video: se reenvía tal cual
+            writeHead(os, 200, type.isEmpty() ? "video/mp2t" : type, c.getContentLengthLong());
+            byte[] buf = new byte[32768];
+            int n;
+            while ((n = in.read(buf)) > 0) os.write(buf, 0, n);
+        }
+        os.flush();
+        in.close();
+    }
+
     /** Página del control remoto: sale de los archivos de la app (se actualiza sola con la app). */
     private String remotePage() {
         try {
@@ -627,6 +686,19 @@ public class MainActivity extends Activity {
             String query = path.indexOf('?') >= 0 ? path.substring(path.indexOf('?') + 1) : "";
             String route = path.indexOf('?') >= 0 ? path.substring(0, path.indexOf('?')) : path;
             Map<String, String> f = form(first.startsWith("POST") ? body : query);
+            if (route.equals("/p")) {                                      // ver la TV en el celular
+                if (sessionOk(f.get("sid"))) proxyStream(s, f.get("u"), f.get("sid"));
+                else { OutputStream os0 = s.getOutputStream(); writeHead(os0, 403, "text/plain", 0); os0.flush(); }
+                return;
+            }
+            if (route.equals("/lib/hls.min.js")) {                         // reproductor de video para el celular
+                byte[] js0 = appFile("lib/hls.min.js");
+                OutputStream os1 = s.getOutputStream();
+                if (js0 == null) writeHead(os1, 404, "text/plain", 0);
+                else { writeHead(os1, 200, "application/javascript; charset=utf-8", js0.length); os1.write(js0); }
+                os1.flush();
+                return;
+            }
             if (route.equals("/hello")) {                                 // un celular se conecta con el código del QR
                 type = "text/plain; charset=utf-8";
                 if (pairToken().equals(f.get("k"))) {
