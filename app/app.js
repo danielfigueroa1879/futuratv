@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.7.1';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.8.0';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -80,6 +80,32 @@
   var LOCAL_M3U = 'channels/chile.m3u';                              // copia incluida, por si no hay conexión con m3u.cl
   var DEFAULT_M3U = 'https://iptv-org.github.io/iptv/countries/cl.m3u'; // lista extra (se cambia en Ajustes)
   var EXTRA_GROUP = 'Más canales';
+  // Listas extra (Ajustes): se pueden agregar varias; cada una queda como su propia categoría
+  var MAX_LISTS = 10;
+  function m3uLists() {
+    var a = null;
+    try { a = JSON.parse(store('m3uLists') || 'null'); } catch (e) { a = null; }
+    if (!Array.isArray(a)) { a = [store('m3u') || DEFAULT_M3U]; store('m3uLists', JSON.stringify(a)); }   // de la versión con una sola lista
+    return a.filter(function (u) { return /^https?:\/\//i.test(u); }).slice(0, MAX_LISTS);
+  }
+  function m3uSave(a) { store('m3uLists', JSON.stringify(a)); }
+  function m3uLabel(u) {
+    if (u === DEFAULT_M3U) return EXTRA_GROUP;
+    try {
+      var x = new URL(u), f = decodeURIComponent(x.pathname.split('/').filter(Boolean).pop() || '').replace(/\.(m3u8?|txt)$/i, '');
+      var n = f && !/^(index|playlist|lista|list|tv|channels|canales|get|iptv)$/i.test(f) ? f : x.hostname.replace(/^www\./, '');
+      return '📋 ' + n.replace(/[_+-]+/g, ' ').trim().slice(0, 28);
+    } catch (e) { return '📋 Lista'; }
+  }
+  var m3uStatus = {};                          // por lista: cuántos canales trajo (o si falló) en la última carga
+  function renderM3uLists() {
+    var box = $('m3uLists'); if (!box) return;
+    box.innerHTML = m3uLists().map(function (u, i) {
+      var st = m3uStatus[u], info = st == null ? '' : st < 0 ? ' · ⚠ no se pudo cargar' : ' · ' + st + (st === 1 ? ' canal' : ' canales');
+      return '<div class="m3u-row"><span class="nm">' + escapeHtml(m3uLabel(u)) + '<small>' + escapeHtml(info) + '</small></span>' +
+        '<span class="u">' + escapeHtml(u) + '</span><button class="btn ghost focusable" data-m3u-del="' + i + '">Quitar</button></div>';
+    }).join('') || '<p class="hint">Sin listas extra: solo los canales incluidos.</p>';
+  }
   // Fútbol: canales gratuitos y oficiales (lista incluida en la app) + los de fútbol de la lista chilena
   var FUT_LIST = 'channels/futbol.m3u', FUT_GROUP = '⚽ Fútbol';
   var FUT_CHILE = { chvdeportes: 1, futgo: 1, d13: 1 };
@@ -569,7 +595,7 @@
     });
     if (name === 'live' && !channels.length && !loadingChannels) loadChannels();
     if (name === 'live') setTimeout(loadLogos, 0);
-    if (name === 'settings') { $('m3uInput').value = store('m3u') || DEFAULT_M3U; updateSettingsInfo(); }
+    if (name === 'settings') { renderM3uLists(); updateSettingsInfo(); }
     wallSync();
   }
 
@@ -673,7 +699,7 @@
   var loadingChannels = false;
   function loadChannels() {
     loadingChannels = true;
-    var extraUrl = store('m3u') || DEFAULT_M3U;
+    var extraUrls = m3uLists();
     $('liveStatus').textContent = 'Cargando lista de canales…';
     $('liveStatus').classList.remove('hidden');
     $('channelGrid').innerHTML = ''; $('groupBar').innerHTML = '';
@@ -683,7 +709,10 @@
       .catch(function () { return getText(LOCAL_M3U).then(asList); })
       .then(sortChile)
       .catch(function () { return []; });
-    var extra = cachedGet(extraUrl, SIX_H).then(parseM3U).catch(function () { return []; });
+    var extra = Promise.all(extraUrls.map(function (u) {
+      return cachedGet(u, SIX_H).then(parseM3U).then(function (l) { m3uStatus[u] = l.length; return { u: u, list: l }; })
+        .catch(function () { m3uStatus[u] = -1; return { u: u, list: [] }; });
+    }));
     var intl = cachedGet(INTL_URL, SIX_H).then(parseM3U).catch(function () { return []; });
     var fut = getText(FUT_LIST).then(parseM3U).catch(function () { return []; });
     var dead = getText(DEAD_LIST).then(function (t) {
@@ -692,7 +721,8 @@
     Promise.all([chile, extra, intl, dead, fut]).then(function (lists) {
       var seen = {}, deadSet = lists[3];
       var alive = function (c) { return !deadSet[deadKey(c.url)]; };
-      lists[0] = lists[0].filter(alive); lists[1] = lists[1].filter(alive); lists[2] = lists[2].filter(alive);
+      lists[0] = lists[0].filter(alive); lists[2] = lists[2].filter(alive);
+      var labels = {};
       channels = [];
       lists[0].forEach(function (c) { var k0 = normName(c.name); seen[k0] = 1; if (FUT_CHILE[k0]) c.futbol = true; channels.push(c); });
       lists[4].filter(alive).forEach(function (c) {
@@ -700,10 +730,15 @@
         if (seen[k]) return;
         seen[k] = 1; c.group = FUT_GROUP; c.futbol = true; channels.push(c);
       });
-      lists[1].forEach(function (c) {
-        var k = normName(c.name);
-        if (seen[k]) return;           // ya está en la lista chilena
-        seen[k] = 1; c.group = EXTRA_GROUP; channels.push(c);
+      lists[1].forEach(function (x) {
+        var lab = m3uLabel(x.u), n = 2;
+        while (labels[lab]) lab = m3uLabel(x.u) + ' ' + (n++);   // dos listas con el mismo nombre
+        labels[lab] = 1;
+        x.list.filter(alive).forEach(function (c) {
+          var k = normName(c.name);
+          if (seen[k]) return;         // ya está en otra lista
+          seen[k] = 1; c.group = lab; channels.push(c);
+        });
       });
       lists[2].forEach(function (c) {
         if (/youtube\.com|youtu\.be|twitch\.tv/i.test(c.url)) return;   // no se pueden reproducir directo
@@ -721,7 +756,9 @@
       refreshChannels();
       if (window.mitvReadyFast) window.mitvReadyFast();
       autoStartFavorite();
-      if (!lists[1].length) $('liveStatus').textContent += ' (no se pudo cargar la lista extra de Ajustes)';
+      var failed = lists[1].filter(function (x) { return m3uStatus[x.u] < 0; }).length;
+      if (failed) $('liveStatus').textContent += ' (' + (failed === 1 ? 'una lista extra no se pudo cargar' : failed + ' listas extra no se pudieron cargar') + ': revisa Ajustes)';
+      renderM3uLists();
       loadingChannels = false;
     }).catch(function (e) {
       channels = []; loadingChannels = false;
@@ -1863,12 +1900,22 @@
       return;
     }
     if (el.id === 'saveM3u') {
-      var v = $('m3uInput').value.trim();
-      if (!/^https?:\/\//i.test(v)) { toast('Escribe una URL que empiece con http:// o https://'); return; }
-      store('m3u', v); channels = []; toast('Lista guardada'); showView('live'); setFocus(document.querySelector('.tab[data-view="live"]'));
+      var v = $('m3uInput').value.trim(), all = m3uLists();
+      if (!/^https?:\/\//i.test(v)) { toast('Pega el enlace de la lista (empieza con http:// o https://)'); return; }
+      if (all.indexOf(v) >= 0) { toast('Esa lista ya está agregada'); return; }
+      if (all.length >= MAX_LISTS) { toast('Máximo ' + MAX_LISTS + ' listas: quita una para agregar otra'); return; }
+      all.push(v); m3uSave(all); $('m3uInput').value = ''; channels = [];
+      toast('📋 Lista agregada: ' + m3uLabel(v) + ' · cargando canales…'); showView('live'); setFocus(document.querySelector('.tab[data-view="live"]'));
       return;
     }
-    if (el.id === 'resetM3u') { store('m3u', DEFAULT_M3U); $('m3uInput').value = DEFAULT_M3U; channels = []; toast('Lista restablecida'); return; }
+    if (el.hasAttribute('data-m3u-del')) {
+      var lst = m3uLists(), gone = lst.splice(+el.getAttribute('data-m3u-del'), 1)[0];
+      m3uSave(lst); channels = []; renderM3uLists();
+      toast('Lista quitada: ' + m3uLabel(gone || ''));
+      setFocus(document.querySelector('[data-m3u-del]') || $('saveM3u'));
+      return;
+    }
+    if (el.id === 'resetM3u') { m3uSave([DEFAULT_M3U]); $('m3uInput').value = ''; channels = []; renderM3uLists(); toast('Listas restablecidas'); return; }
     if (el.id === 'prevMode') {
       prevWant = !(prevWant && !prevAutoOff); prevTriple = prevWant; prevAutoOff = false;
       store('prevNeighbors', prevWant ? '1' : '0'); updatePrevBtn();

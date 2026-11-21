@@ -54,13 +54,14 @@
   <main class="view hidden" id="view-settings">
     <h2>Ajustes</h2>
     <label class="field">
-      <span>Lista extra de canales (M3U) – se suma a los canales chilenos incluidos</span>
-      <input id="m3uInput" class="focusable" type="text" spellcheck="false">
+      <span>Listas extra de canales (M3U) – se suman a los canales incluidos. Pega el enlace de la lista (termina en .m3u o .m3u8) y aprieta «＋ Agregar lista».</span>
+      <input id="m3uInput" class="focusable" type="text" spellcheck="false" autocomplete="off" placeholder="https://…/lista.m3u">
     </label>
     <div class="row">
-      <button class="btn focusable" id="saveM3u">Guardar y recargar</button>
-      <button class="btn ghost focusable" id="resetM3u">Restablecer (Chile)</button>
+      <button class="btn focusable" id="saveM3u">＋ Agregar lista</button>
+      <button class="btn ghost focusable" id="resetM3u">Restablecer listas</button>
     </div>
+    <div class="m3u-lists" id="m3uLists"></div>
     <p class="hint" id="appVersion"></p>
     <div class="row"><button class="btn ghost focusable" id="checkUpdate">⟳ Buscar actualización ahora</button></div>
     <h2 class="sub">Videos de YouTube en Favoritos</h2>
