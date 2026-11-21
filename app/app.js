@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.8.0';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.9.0';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -109,6 +109,8 @@
   // Fútbol: canales gratuitos y oficiales (lista incluida en la app) + los de fútbol de la lista chilena
   var FUT_LIST = 'channels/futbol.m3u', FUT_GROUP = '⚽ Fútbol';
   var FUT_CHILE = { chvdeportes: 1, futgo: 1, d13: 1 };
+  // Deportes del mundo: lista completa de iptv-org (en línea, se actualiza sola). Va en su propia categoría, no en «Todos»
+  var SPORTS_URL = 'https://iptv-org.github.io/iptv/categories/sports.m3u', SPORTS_GROUP = '🏅 Deportes del mundo';
   // Enlaces revisados que no funcionan (404, dominio inexistente, certificado inválido): no se muestran
   var DEAD_LIST = 'channels/caidos.json';
   function deadKey(u) { return String(u).replace(/[?&]PlaylistM3UCL$/, '').replace(/^http:/, 'https:').replace(/(\/\/[^\/:]+):\//, '$1/'); }
@@ -715,10 +717,11 @@
     }));
     var intl = cachedGet(INTL_URL, SIX_H).then(parseM3U).catch(function () { return []; });
     var fut = getText(FUT_LIST).then(parseM3U).catch(function () { return []; });
+    var sports = cachedGet(SPORTS_URL, SIX_H).then(parseM3U).catch(function () { return []; });
     var dead = getText(DEAD_LIST).then(function (t) {
       var o = {}; (JSON.parse(t) || []).forEach(function (u) { o[deadKey(u)] = 1; }); return o;
     }).catch(function () { return {}; });
-    Promise.all([chile, extra, intl, dead, fut]).then(function (lists) {
+    Promise.all([chile, extra, intl, dead, fut, sports]).then(function (lists) {
       var seen = {}, deadSet = lists[3];
       var alive = function (c) { return !deadSet[deadKey(c.url)]; };
       lists[0] = lists[0].filter(alive); lists[2] = lists[2].filter(alive);
@@ -729,6 +732,11 @@
         var k = normName(c.name);
         if (seen[k]) return;
         seen[k] = 1; c.group = FUT_GROUP; c.futbol = true; channels.push(c);
+      });
+      lists[5].filter(alive).forEach(function (c) {
+        var k = normName(c.name);
+        if (seen[k]) return;
+        seen[k] = 1; c.group = SPORTS_GROUP; c.mundo = true; channels.push(c);
       });
       lists[1].forEach(function (x) {
         var lab = m3uLabel(x.u), n = 2;
@@ -807,7 +815,8 @@
       if (first) fl.sort(function (a, b) { return (chKey(b) === first) - (chKey(a) === first); });
       return fl;
     }
-    if (group === 'Todos') return vis.filter(function (c) { return !c.intl && !c.yt; });
+    if (group === 'Todos') return vis.filter(function (c) { return !c.intl && !c.yt && !c.mundo; });
+    if (group === SPORTS_GROUP) return vis.filter(function (c) { return c.mundo; });
     if (group === FUT_GROUP) return vis.filter(function (c) { return c.futbol; });
     if (group === INTL_GROUP) return intlCountries(vis);
     return vis.filter(function (c) { return c.group === group; });
@@ -830,6 +839,7 @@
     g.push('Todos');
     var seen = {};
     if (listFor(FUT_GROUP).length) { g.push(FUT_GROUP); seen[FUT_GROUP] = 1; }   // ⚽ Fútbol va justo después de Todos
+    if (listFor(SPORTS_GROUP).length) { g.push(SPORTS_GROUP); seen[SPORTS_GROUP] = 1; }
     listFor('Todos').forEach(function (c) { if (!seen[c.group]) { seen[c.group] = 1; g.push(c.group); } });
     if (intlCount()) g.push(INTL_GROUP);
     if (Object.keys(hiddenSet).length && listFor(HID_GROUP).length) g.push(HID_GROUP);
