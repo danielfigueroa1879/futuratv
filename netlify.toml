@@ -1,0 +1,10 @@
+# Netlify: publica la versión para el navegador (carpeta app/). No hay que compilar nada.
+[build]
+  publish = "app"
+  command = "echo 'FuturaTV: sin compilación, se publica la carpeta app/'"
+
+# Que los archivos de la app y las listas no queden viejos en la caché del navegador
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
