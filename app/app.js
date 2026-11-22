@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.13.0';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.14.0';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -107,11 +107,12 @@
     var a = null;
     try { a = JSON.parse(store('m3uLists') || 'null'); } catch (e) { a = null; }
     if (!Array.isArray(a)) { a = [store('m3u') || DEFAULT_M3U]; store('m3uLists', JSON.stringify(a)); }   // de la versión con una sola lista
-    return a.filter(function (u) { return /^https?:\/\//i.test(u); }).slice(0, MAX_LISTS);
+    return a.filter(function (u) { return /^(https?:\/\/|local:)/i.test(u); }).slice(0, MAX_LISTS);
   }
   function m3uSave(a) { store('m3uLists', JSON.stringify(a)); }
   function m3uLabel(u) {
     if (u === DEFAULT_M3U) return EXTRA_GROUP;
+    if (u.indexOf('local:') === 0) return '✅ ' + (store('genname:' + u) || 'Lista revisada');
     try {
       var x = new URL(u), f = decodeURIComponent(x.pathname.split('/').filter(Boolean).pop() || '').replace(/\.(m3u8?|txt)$/i, '');
       var n = f && !/^(index|playlist|lista|list|tv|channels|canales|get|iptv)$/i.test(f) ? f : x.hostname.replace(/^www\./, '');
@@ -127,6 +128,233 @@
         '<span class="u">' + escapeHtml(u) + '</span><button class="btn ghost focusable" data-m3u-del="' + i + '">Quitar</button></div>';
     }).join('') || '<p class="hint">Sin listas extra: solo los canales incluidos.</p>';
   }
+  // ---------- Revisor de listas: activos (verde) / caídos (rojo) / dudosos (amarillo) ----------
+  // En la TV y el celular revisa desde tu propia conexión (lo más exacto). En la web usa el servidor de Netlify
+  // (el navegador bloquea muchos canales); sin servidor, lo que el navegador no deja revisar queda «dudoso».
+  var chk = { items: [], running: false, gen: 0, filter: 'all', src: '', name: '' };
+  // Acceso solo para el dueño: se abre tocando 5 veces «FuturaTV versión…» en Ajustes y escribiendo el código.
+  // En el código solo está la huella SHA-256 del código (no el código). El servidor también lo exige.
+  var ADMIN_HASH = '69673acb9cbe77dfc0a8199cabb3d30dc563891c10452495b7163a27a2e6de97';
+  function sha256(str) {                         // SHA-256 en JavaScript (funciona igual en TV, celular y navegador)
+    var ascii = unescape(encodeURIComponent(String(str)));
+    var rr = function (v, n) { return (v >>> n) | (v << (32 - n)); };
+    var maxWord = Math.pow(2, 32), i, j, result = '', words = [], bitLen = ascii.length * 8;
+    var hash = [], k = [], primes = 0, comp = {};
+    for (var cand = 2; primes < 64; cand++) {
+      if (!comp[cand]) {
+        for (i = 0; i < 313; i += cand) comp[i] = cand;
+        if (primes < 8) hash[primes] = (Math.pow(cand, 0.5) * maxWord) | 0;
+        k[primes++] = (Math.pow(cand, 1 / 3) * maxWord) | 0;
+      }
+    }
+    ascii += '\x80';
+    while (ascii.length % 64 - 56) ascii += '\x00';
+    for (i = 0; i < ascii.length; i++) { j = ascii.charCodeAt(i); words[i >> 2] |= j << ((3 - i) % 4) * 8; }
+    words[words.length] = (bitLen / maxWord) | 0;
+    words[words.length] = bitLen;
+    for (j = 0; j < words.length;) {
+      var w = words.slice(j, j += 16), old = hash;
+      hash = hash.slice(0, 8);
+      for (i = 0; i < 64; i++) {
+        var w15 = w[i - 15], w2 = w[i - 2], a = hash[0], e = hash[4];
+        var t1 = hash[7] + (rr(e, 6) ^ rr(e, 11) ^ rr(e, 25)) + ((e & hash[5]) ^ ((~e) & hash[6])) + k[i] +
+          (w[i] = (i < 16) ? w[i] : (w[i - 16] + (rr(w15, 7) ^ rr(w15, 18) ^ (w15 >>> 3)) + w[i - 7] + (rr(w2, 17) ^ rr(w2, 19) ^ (w2 >>> 10))) | 0);
+        var t2 = (rr(a, 2) ^ rr(a, 13) ^ rr(a, 22)) + ((a & hash[1]) ^ (a & hash[2]) ^ (hash[1] & hash[2]));
+        hash = [(t1 + t2) | 0].concat(hash);
+        hash[4] = (hash[4] + t1) | 0;
+      }
+      for (i = 0; i < 8; i++) hash[i] = (hash[i] + old[i]) | 0;
+    }
+    for (i = 0; i < 8; i++) for (j = 3; j + 1; j--) { var b = (hash[i] >> (j * 8)) & 255; result += (b < 16 ? '0' : '') + b.toString(16); }
+    return result;
+  }
+  function adminOk() { var k = store('adminKey'); return !!k && sha256(k) === ADMIN_HASH; }
+  function adminSync() { var on = adminOk(); if ($('chkSec')) $('chkSec').classList.toggle('hidden', !on); if (on && $('adminBox')) $('adminBox').classList.add('hidden'); }
+  var adminTaps = [];
+  function adminTap() {
+    if (adminOk()) return;
+    var now = Date.now(); adminTaps = adminTaps.filter(function (t) { return now - t < 4000; }); adminTaps.push(now);
+    if (adminTaps.length >= 5) { adminTaps = []; $('adminBox').classList.remove('hidden'); setFocus($('adminKey')); }
+  }
+  function adminEnter() {
+    var k = ($('adminKey').value || '').trim(); $('adminKey').value = '';
+    if (sha256(k) !== ADMIN_HASH) { toast('Código incorrecto'); return; }
+    store('adminKey', k); adminSync(); toast('🔓 Acceso abierto en este equipo: «🔎 Revisar una lista»');
+    if ($('chkUrl')) setFocus($('chkUrl'));
+  }
+  var CHK_PAR = IS_ANDROID ? 8 : 6, CHK_SHOW = 300;
+  function chkParse(text) {                     // conserva las líneas originales (#EXTINF y opciones) para armar la lista limpia
+    var L = String(text || '').replace(/^\uFEFF/, '').split(/\r?\n/), out = [], cur = null;
+    for (var i = 0; i < L.length; i++) {
+      var l = L[i].trim();
+      if (!l) continue;
+      if (l.indexOf('#EXTINF') === 0) { cur = { raw: [l], name: (l.slice(l.lastIndexOf(',') + 1) || 'Canal').trim() }; }
+      else if (l.charAt(0) === '#') { if (cur) cur.raw.push(l); }
+      else if (cur) { cur.url = l; cur.st = 'pend'; cur.why = ''; out.push(cur); cur = null; }
+    }
+    return out;
+  }
+  function chkFetchText(url, ms) {             // texto de una lista (con límite de tiempo)
+    var ctl = window.AbortController ? new AbortController() : null, t = setTimeout(function () { if (ctl) ctl.abort(); }, ms || 8000);
+    return fetch(url, { cache: 'no-store', credentials: 'omit', signal: ctl ? ctl.signal : undefined }).then(function (r) {
+      var ct = (r.headers.get('content-type') || '').toLowerCase();
+      if (!r.ok) { clearTimeout(t); if (ctl) ctl.abort(); return { status: r.status, text: '' }; }
+      if (!/mpegurl|text|json|xml/.test(ct) && !/\.m3u8?(\?|$)/i.test(url)) { clearTimeout(t); if (ctl) ctl.abort(); return { status: r.status, text: null }; }
+      return r.text().then(function (x) { clearTimeout(t); return { status: r.status, text: x, url: r.url || url }; });
+    }, function (e) { clearTimeout(t); throw e; });
+  }
+  function chkOneDirect(it) {                   // revisa un canal desde este equipo
+    if (!/^https?:\/\//i.test(it.url)) return Promise.resolve({ st: 'bad', why: 'enlace no compatible' });
+    if (IS_WEB && location.protocol === 'https:' && /^http:/i.test(it.url)) return Promise.resolve({ st: 'warn', why: 'el navegador no deja revisar enlaces http' });
+    return chkFetchText(it.url, 8000).then(function (a) {
+      if (a.status === 403 || a.status === 451) return { st: 'bad', why: 'bloqueado (' + a.status + ')' };
+      if (a.status >= 400) return { st: 'bad', why: 'error ' + a.status };
+      if (a.text === null) return { st: 'ok', why: 'video directo' };
+      if (a.text.indexOf('#EXTM3U') < 0) return { st: 'bad', why: 'no es una lista de video' };
+      var lines = a.text.split(/\r?\n/).filter(function (l) { l = l.trim(); return l && l.charAt(0) !== '#'; });
+      if (!lines.length) return { st: 'bad', why: 'lista vacía' };
+      if (a.text.indexOf('#EXT-X-STREAM-INF') < 0) return { st: 'ok', why: '' };
+      var v; try { v = new URL(lines[0].trim(), a.url).href; } catch (e) { return { st: 'ok', why: '' }; }
+      return chkFetchText(v, 6000).then(function (b) {
+        if (b.status >= 400) return { st: 'bad', why: 'error ' + b.status + ' en la calidad' };
+        return { st: 'ok', why: '' };
+      });
+    }).catch(function (e) {
+      if (IS_WEB) return { st: 'warn', why: 'el navegador no deja revisarlo' };   // puede ser CORS: no se sabe
+      return { st: 'bad', why: e && e.name === 'AbortError' ? 'no responde' : 'sin conexión con el servidor' };
+    });
+  }
+  var chkServer = null;                         // ¿hay revisor en el servidor (Netlify)?
+  function chkServerOk() {
+    if (!IS_WEB) return Promise.resolve(false);
+    if (chkServer !== null) return Promise.resolve(chkServer);
+    return fetch('/.netlify/functions/revisar', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-clave': store('adminKey') || '' }, body: '{"urls":[]}' })
+      .then(function (r) { chkServer = r.ok; return chkServer; }, function () { chkServer = false; return false; });
+  }
+  function chkLoadList(url) {
+    var direct = function () { return getText(url); };
+    if (!IS_WEB) return direct();
+    return direct().catch(function () {          // el sitio no deja leer la lista desde la página: la trae el servidor
+      return fetch('/.netlify/functions/lista?u=' + encodeURIComponent(url), { headers: { 'x-clave': store('adminKey') || '' } }).then(function (r) {
+        return r.text().then(function (t) { if (!r.ok) throw new Error(t || 'error ' + r.status); return t; });
+      });
+    });
+  }
+  function chkCounts() {
+    var c = { ok: 0, bad: 0, warn: 0, pend: 0 };
+    chk.items.forEach(function (it) { c[it.st]++; });
+    return c;
+  }
+  var chkTimer = null;
+  function chkRenderSoon() { if (!chkTimer) chkTimer = setTimeout(function () { chkTimer = null; chkRender(); }, 350); }
+  function chkRender() {
+    var c = chkCounts(), n = chk.items.length, done = n - c.pend;
+    $('chkBox').classList.toggle('hidden', !n);
+    $('chkSum').textContent = (chk.name ? chk.name + ' · ' : '') + (chk.running ? 'Revisando ' + done + ' de ' + n + ' · ' : n + ' canales · ') +
+      '🟢 ' + c.ok + ' activos · 🔴 ' + c.bad + ' caídos' + (c.warn ? ' · 🟡 ' + c.warn + ' dudosos' : '');
+    $('chkBarFill').style.width = (n ? Math.round(done * 100 / n) : 0) + '%';
+    Array.prototype.forEach.call(document.querySelectorAll('[data-chkf]'), function (b) { b.classList.toggle('on', b.getAttribute('data-chkf') === chk.filter); });
+    var list = chk.items.filter(function (it) { return chk.filter === 'all' || it.st === chk.filter; });
+    var keep = focused && focused.classList.contains('chk-row') ? +focused.getAttribute('data-k') : -1;
+    $('chkList').innerHTML = list.slice(0, CHK_SHOW).map(function (it) {
+      return '<div class="chk-row focusable ' + it.st + '" data-k="' + chk.items.indexOf(it) + '"><i></i><span class="n">' + escapeHtml(it.name) +
+        '</span><span class="w">' + escapeHtml(it.st === 'pend' ? 'revisando…' : it.st === 'ok' ? (it.why || 'activo') : it.why) + '</span></div>';
+    }).join('') + (list.length > CHK_SHOW ? '<p class="chk-more">… y ' + (list.length - CHK_SHOW) + ' más (descarga la lista para verlos todos)</p>' : '');
+    if (keep >= 0) { var back = document.querySelector('.chk-row[data-k="' + keep + '"]'); if (back) setFocus(back); }
+    $('chkGo').classList.toggle('hidden', chk.running);
+    $('chkStop').classList.toggle('hidden', !chk.running);
+  }
+  function chkStart(text, src, name) {
+    chk.items = chkParse(text); chk.src = src || ''; chk.name = name || ''; chk.filter = 'all';
+    if (!chk.items.length) { toast('Esa lista no tiene canales (¿es un enlace .m3u?)'); chkRender(); return; }
+    var gen = ++chk.gen, next = 0;
+    chk.running = true; chkRender();
+    chkServerOk().then(function (server) {
+      var done = function () {
+        if (gen !== chk.gen) return;
+        chk.running = false; chkRender();
+        var c = chkCounts();
+        toast('✅ Revisión lista: ' + c.ok + ' activos de ' + chk.items.length + (c.warn ? ' · ' + c.warn + ' dudosos' : ''));
+      };
+      if (server) {                              // web: de a 25 por llamada al servidor, 3 llamadas a la vez
+        var batch = function () {
+          if (gen !== chk.gen) return Promise.resolve();
+          var part = chk.items.slice(next, next + 25); next += 25;
+          if (!part.length) return Promise.resolve();
+          return fetch('/.netlify/functions/revisar', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-clave': store('adminKey') || '' },
+            body: JSON.stringify({ urls: part.map(function (it) { return it.url; }) }) })
+            .then(function (r) { return r.json(); })
+            .then(function (res) { part.forEach(function (it, i) { var x = res[i] || { st: 'warn', why: 'sin respuesta' }; it.st = x.st; it.why = x.why; }); },
+              function () { part.forEach(function (it) { it.st = 'warn'; it.why = 'no se pudo revisar'; }); })
+            .then(function () { chkRenderSoon(); return batch(); });
+        };
+        return Promise.all([batch(), batch(), batch()]).then(done);
+      }
+      var worker = function () {                 // TV / celular: desde tu conexión, 8 a la vez
+        if (gen !== chk.gen || next >= chk.items.length) return Promise.resolve();
+        var it = chk.items[next++];
+        return chkOneDirect(it).then(function (x) { it.st = x.st; it.why = x.why; chkRenderSoon(); return worker(); });
+      };
+      var ws = []; for (var w = 0; w < CHK_PAR; w++) ws.push(worker());
+      return Promise.all(ws).then(done);
+    });
+  }
+  function chkActiveText() {
+    var ok = chk.items.filter(function (it) { return it.st === 'ok'; });
+    return { n: ok.length, text: '#EXTM3U\n' + ok.map(function (it) { return it.raw.join('\n') + '\n' + it.url; }).join('\n') + '\n' };
+  }
+  function chkListName() {
+    var n = chk.name || 'lista';
+    try { if (!chk.name && chk.src) n = decodeURIComponent(new URL(chk.src).pathname.split('/').filter(Boolean).pop() || '').replace(/\.(m3u8?|txt)$/i, '') || new URL(chk.src).hostname; } catch (e) { }
+    return n.replace(/[_+-]+/g, ' ').trim().slice(0, 28) || 'lista';
+  }
+  function chkAddToApp() {
+    if (chk.running) { toast('Espera a que termine la revisión'); return; }
+    var a = chkActiveText();
+    if (!a.n) { toast('No hay canales activos para agregar'); return; }
+    if (a.text.length > 2500000) { toast('La lista de activos es muy grande para guardarla en este equipo: descárgala'); return; }
+    var all = m3uLists();
+    if (all.length >= MAX_LISTS) { toast('Máximo ' + MAX_LISTS + ' listas: quita una para agregar otra'); return; }
+    var id = 'local:' + Date.now();
+    store('genlist:' + id, a.text); store('genname:' + id, chkListName() + ' (activos)');
+    if (store('genlist:' + id) !== a.text) { toast('No hay espacio para guardar la lista en este equipo: descárgala'); return; }
+    all.push(id); m3uSave(all); channels = []; renderM3uLists();
+    toast('➕ Agregada: ✅ ' + chkListName() + ' (activos) · ' + a.n + ' canales. Está en «Canales en vivo».');
+  }
+  function chkDownload() {
+    if (chk.running) { toast('Espera a que termine la revisión'); return; }
+    var a = chkActiveText(), fname = chkListName().replace(/\s+/g, '-') + '-activos.m3u';
+    if (!a.n) { toast('No hay canales activos para descargar'); return; }
+    if (IS_ANDROID) {
+      if (typeof window.Android.saveFile !== 'function') { toast('Para descargar instala la nueva APK de FuturaTV (2.14.0)'); return; }
+      var where = ''; try { where = window.Android.saveFile(fname, a.text); } catch (e) { where = ''; }
+      toast(where ? '⬇ Lista guardada en ' + where + ' (' + a.n + ' canales)' : 'No se pudo guardar el archivo');
+      return;
+    }
+    var blob = new Blob([a.text], { type: 'audio/x-mpegurl' }), link = document.createElement('a');
+    link.href = URL.createObjectURL(blob); link.download = fname; document.body.appendChild(link); link.click();
+    setTimeout(function () { URL.revokeObjectURL(link.href); link.remove(); }, 2000);
+    toast('⬇ Descargando ' + fname + ' (' + a.n + ' canales activos)');
+  }
+  function chkGo() {
+    if (!adminOk()) { toast('Sin acceso'); return; }
+    var u = ($('chkUrl').value || '').trim();
+    if (!/^https?:\/\//i.test(u)) { toast('Pega el enlace de la lista (empieza con http:// o https://)'); return; }
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    chk.gen++; chk.items = []; chk.running = true; chkRender();
+    $('chkBox').classList.remove('hidden'); $('chkSum').textContent = 'Descargando la lista…';
+    chkLoadList(u).then(function (t) { chkStart(t, u, ''); }, function (e) {
+      chk.running = false; chkRender(); $('chkBox').classList.remove('hidden');
+      $('chkSum').textContent = '⚠ No se pudo descargar la lista: ' + ((e && e.message) || 'revisa el enlace');
+    });
+  }
+  if (document.getElementById('chkFile')) document.getElementById('chkFile').addEventListener('change', function () {
+    var f = this.files && this.files[0]; if (!f) return;
+    var rd = new FileReader();
+    rd.onload = function () { chkStart(String(rd.result || ''), '', f.name.replace(/\.(m3u8?|txt)$/i, '')); };
+    rd.readAsText(f); this.value = '';
+  });
+
   // Fútbol: canales gratuitos y oficiales (lista incluida en la app) + los de fútbol de la lista chilena
   var FUT_LIST = 'channels/futbol.m3u', FUT_GROUP = '⚽ Fútbol';
   var FUT_CHILE = { chvdeportes: 1, futgo: 1, d13: 1 };
@@ -689,7 +917,7 @@
     });
     if (name === 'live' && !channels.length && !loadingChannels) loadChannels();
     if (name === 'live') setTimeout(loadLogos, 0);
-    if (name === 'settings') { renderM3uLists(); updateSettingsInfo(); }
+    if (name === 'settings') { renderM3uLists(); updateSettingsInfo(); adminSync(); }
     wallSync();
   }
 
@@ -847,7 +1075,8 @@
       .then(sortChile)
       .catch(function () { return []; });
     var extra = Promise.all(extraUrls.map(function (u) {
-      return cachedGet(u, SIX_H).then(parseM3U).then(function (l) { m3uStatus[u] = l.length; return { u: u, list: l }; })
+      var src = u.indexOf('local:') === 0 ? Promise.resolve(store('genlist:' + u) || '') : cachedGet(u, SIX_H);
+      return src.then(parseM3U).then(function (l) { m3uStatus[u] = l.length; return { u: u, list: l }; })
         .catch(function () { m3uStatus[u] = -1; return { u: u, list: [] }; });
     }));
     var intl = cachedGet(INTL_URL, SIX_H).then(parseM3U).catch(function () { return []; });
@@ -2122,6 +2351,15 @@
       playChannel(filtered.slice(), +el.getAttribute('data-ch'), activeGroup, mode === 'pip' ? 'pip' : 'full');
       return;
     }
+    if (el.id === 'appVersion') { adminTap(); return; }
+    if (el.id === 'adminGo') { adminEnter(); return; }
+    if (el.id === 'chkLock') { try { localStorage.removeItem('adminKey'); } catch (e) { } chk.gen++; chk.running = false; adminSync(); toast('🔒 Acceso cerrado en este equipo'); return; }
+    if (el.id === 'chkGo') { chkGo(); return; }
+    if (el.id === 'chkStop') { chk.gen++; chk.running = false; chkRender(); toast('Revisión detenida'); return; }
+    if (el.id === 'chkAdd') { chkAddToApp(); return; }
+    if (el.id === 'chkDown') { chkDownload(); return; }
+    if (el.id === 'chkFileBtn') { $('chkFile').click(); return; }
+    if (el.hasAttribute('data-chkf')) { chk.filter = el.getAttribute('data-chkf'); chkRender(); return; }
     if (el.id === 'saveM3u') {
       var v = $('m3uInput').value.trim(), all = m3uLists();
       if (!/^https?:\/\//i.test(v)) { toast('Pega el enlace de la lista (empieza con http:// o https://)'); return; }
@@ -2133,6 +2371,7 @@
     }
     if (el.hasAttribute('data-m3u-del')) {
       var lst = m3uLists(), gone = lst.splice(+el.getAttribute('data-m3u-del'), 1)[0];
+      if (gone && gone.indexOf('local:') === 0) { try { localStorage.removeItem('genlist:' + gone); localStorage.removeItem('genname:' + gone); } catch (e) { } }
       m3uSave(lst); channels = []; renderM3uLists();
       toast('Lista quitada: ' + m3uLabel(gone || ''));
       setFocus(document.querySelector('[data-m3u-del]') || $('saveM3u'));

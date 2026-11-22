@@ -8,3 +8,7 @@
   for = "/*"
   [headers.values]
     Cache-Control = "public, max-age=0, must-revalidate"
+
+# Revisor de listas (versión web): funciones del servidor de Netlify
+[functions]
+  directory = "netlify/functions"

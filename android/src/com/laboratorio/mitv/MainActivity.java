@@ -936,6 +936,31 @@ public class MainActivity extends Activity {
             return true;
         }
 
+        /** Revisor de listas: guarda la lista de activos en Descargas. Devuelve dónde quedó, o "" si falló. */
+        @JavascriptInterface
+        public String saveFile(String name, String text) {
+            try {
+                String safe = (name == null ? "lista" : name).replaceAll("[^\\w.-]", "_");
+                if (!safe.toLowerCase().endsWith(".m3u")) safe += ".m3u";
+                byte[] data = (text == null ? "" : text).getBytes("UTF-8");
+                if (Build.VERSION.SDK_INT >= 29) {
+                    android.content.ContentValues v = new android.content.ContentValues();
+                    v.put(android.provider.MediaStore.Downloads.DISPLAY_NAME, safe);
+                    v.put(android.provider.MediaStore.Downloads.MIME_TYPE, "audio/x-mpegurl");
+                    v.put(android.provider.MediaStore.Downloads.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS);
+                    android.net.Uri u = getContentResolver().insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, v);
+                    if (u == null) return "";
+                    try (OutputStream o = getContentResolver().openOutputStream(u)) { o.write(data); }
+                    return "Descargas/" + safe;
+                }
+                File dir = getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS);
+                if (dir == null) dir = getFilesDir();
+                File f = new File(dir, safe);
+                try (FileOutputStream o = new FileOutputStream(f)) { o.write(data); }
+                return f.getAbsolutePath();
+            } catch (Exception e) { return ""; }
+        }
+
         /** Páginas guardadas como canal desde el navegador: [{name,url}] */
         @JavascriptInterface
         public String webChannels() { return prefs().getString("webChannels", "[]"); }

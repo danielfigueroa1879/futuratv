@@ -62,7 +62,36 @@
       <button class="btn ghost focusable" id="resetM3u">Restablecer listas</button>
     </div>
     <div class="m3u-lists" id="m3uLists"></div>
-    <p class="hint" id="appVersion"></p>
+    <div class="hidden" id="chkSec">
+    <h2 class="sub">🔎 Revisar una lista (activos y caídos) <button class="btn ghost focusable chk-lock" id="chkLock">🔒 Cerrar acceso</button></h2>
+    <p class="hint" id="chkHint">Pega el enlace de una lista M3U y aprieta «Revisar»: cada canal sale en <b style="color:#22c55e">verde</b> si funciona o en <b style="color:#ef4444">rojo</b> si está caído. Después puedes agregar solo los activos a FuturaTV o descargar la lista limpia.</p>
+    <label class="field"><span>Enlace de la lista a revisar</span>
+      <input id="chkUrl" class="focusable" type="text" spellcheck="false" autocomplete="off" placeholder="https://…/lista.m3u"></label>
+    <div class="row">
+      <button class="btn focusable" id="chkGo">🔎 Revisar</button>
+      <button class="btn ghost focusable hidden" id="chkStop">Detener</button>
+      <button class="btn ghost focusable web-only" id="chkFileBtn">📂 Abrir archivo</button>
+    </div>
+    <input type="file" id="chkFile" accept=".m3u,.m3u8,.txt" hidden>
+    <div class="chk hidden" id="chkBox">
+      <p class="chk-sum" id="chkSum"></p>
+      <div class="chk-bar"><i id="chkBarFill"></i></div>
+      <div class="row chk-filters">
+        <button class="btn ghost focusable on" data-chkf="all">Todos</button>
+        <button class="btn ghost focusable" data-chkf="ok">🟢 Activos</button>
+        <button class="btn ghost focusable" data-chkf="bad">🔴 Caídos</button>
+        <button class="btn ghost focusable" data-chkf="warn">🟡 Dudosos</button>
+      </div>
+      <div class="row">
+        <button class="btn focusable" id="chkAdd">➕ Agregar los activos a FuturaTV</button>
+        <button class="btn ghost focusable" id="chkDown">⬇ Descargar lista de activos (.m3u)</button>
+      </div>
+      <div class="chk-list" id="chkList"></div>
+    </div>
+    </div>
+    <p class="hint focusable app-version" id="appVersion"></p>
+    <div class="row hidden" id="adminBox"><input id="adminKey" class="focusable" type="password" autocomplete="off" placeholder="Código de acceso">
+      <button class="btn focusable" id="adminGo">Entrar</button></div>
     <div class="row"><button class="btn ghost focusable" id="checkUpdate">⟳ Buscar actualización ahora</button></div>
     <h2 class="sub">Videos de YouTube en Favoritos</h2>
     <label class="field">
