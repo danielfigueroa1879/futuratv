@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.11.2';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.12.0';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -53,6 +53,7 @@
     if (vp) vp.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover');
   }
   var APPS = [
+    { name: 'Navegador', builtin: 'browser', color: '#1d4ed8', glyph: '🌐', web: 'https://www.google.com/' },
     { name: 'YouTube',      id: 'youtube.leanback.v4',        color: '#ff0033', glyph: '▶', web: 'https://www.youtube.com/tv',
       android: ['com.google.android.youtube.tv', 'com.amazon.firetv.youtube', 'com.google.android.youtube'] },
     { name: 'Netflix',      id: 'netflix',                    color: '#b20710', glyph: 'N',
@@ -193,6 +194,7 @@
     bridge.call(uri, JSON.stringify(params || {}));
   }
   function launchApp(app) {
+    if (app.builtin === 'browser') { openWeb(''); return; }
     if (IS_ANDROID) {
       var ok = false;
       try { ok = window.Android.launchApp(JSON.stringify(app.android || [])); } catch (e) { ok = false; }
@@ -227,7 +229,37 @@
       favs[chKey(c)] = 1;
     });
   }
+  // ---------- Navegador interno y páginas guardadas como canal («🌐 Sitios web») ----------
+  var WEB_GROUP = '🌐 Sitios web', webChKey = '';
+  var webOpenAt = 0;
+  function openWeb(url) {
+    if (Date.now() - webOpenAt < 1500) return;     // un solo toque abre una sola vez
+    webOpenAt = Date.now();
+    if (IS_ANDROID) {
+      if (typeof window.Android.openBrowser !== 'function') { toast('Para el navegador instala la nueva APK de FuturaTV (2.12.0)'); return; }
+      try { window.Android.openBrowser(url || ''); } catch (e) { }
+      return;
+    }
+    window.open(url || 'https://www.google.com/', '_blank');
+  }
+  // Las páginas guardadas con «📺 Canal» en el navegador: se muestran como canales (yt: 'web' = se abren fuera del reproductor)
+  function webChannelsLoad() {
+    var a = [];
+    if (IS_ANDROID && typeof window.Android.webChannels === 'function') { try { a = JSON.parse(window.Android.webChannels()) || []; } catch (e) { a = []; } }
+    var key = JSON.stringify(a);
+    if (key === webChKey) return false;
+    webChKey = key;
+    for (var i = channels.length - 1; i >= 0; i--) if (channels[i].web) channels.splice(i, 1);
+    a.forEach(function (o) {
+      if (!o || !/^https?:\/\//i.test(o.url || '')) return;
+      var host = ''; try { host = new URL(o.url).hostname; } catch (e) { }
+      channels.push({ name: String(o.name || host).slice(0, 60), url: o.url, web: o.url, yt: 'web', group: WEB_GROUP,
+        logo: host ? 'https://www.google.com/s2/favicons?sz=128&domain=' + host : '' });
+    });
+    return true;
+  }
   function openYouTube(c) {
+    if (c.web) { openWeb(c.web); toast('🌐 Abriendo ' + c.name); return; }
     var url = 'https://www.youtube.com/watch?v=' + c.yt;
     if (IS_ANDROID) {
       var ok = false;
@@ -449,7 +481,7 @@
     $('tvFound').innerHTML = ''; tvMsg('Este celular olvidó la TV.' + (t.key ? '' : '')); tvUpdateUi();
   }
   function tvPhoneFavs() {
-    return listFor(FAV_GROUP).slice(0, 300).map(function (c) { return { name: c.name, url: c.yt ? '' : c.url, logo: c.logo || '', yt: c.yt || '' }; });
+    return listFor(FAV_GROUP).filter(function (c) { return !c.web; }).slice(0, 300).map(function (c) { return { name: c.name, url: c.yt ? '' : c.url, logo: c.logo || '', yt: c.yt || '' }; });
   }
   function tvShow(host, key) {
     var f = $('tvFrame');
@@ -834,6 +866,7 @@
       channels.forEach(function (c) { if (FUTCL_NAMES[normName(c.name)]) c.futcl = true; if (TNT_RE.test(c.name)) c.futbol = true; });
       if (!channels.length) throw new Error('las listas están vacías');
       ytMergeInto(channels);
+      webChKey = ''; webChannelsLoad();
       activeGroup = listFor(FAV_GROUP).length ? FAV_GROUP : 'Todos';
       refreshChannels();
       if (window.mitvReadyFast) window.mitvReadyFast();
@@ -921,6 +954,7 @@
     if (listFor(FUTCL_GROUP).length) { g.push(FUTCL_GROUP); seen[FUTCL_GROUP] = 1; }   // ⚽ Fútbol Chile y ⚽ Fútbol, justo después de Todos
     if (listFor(FUT_GROUP).length) { g.push(FUT_GROUP); seen[FUT_GROUP] = 1; }
     if (listFor(SPORTS_GROUP).length) { g.push(SPORTS_GROUP); seen[SPORTS_GROUP] = 1; }
+    if (listFor(WEB_GROUP).length) { g.push(WEB_GROUP); seen[WEB_GROUP] = 1; }
     listFor('Todos').forEach(function (c) { if (!seen[c.group]) { seen[c.group] = 1; g.push(c.group); } });
     if (intlCount()) g.push(INTL_GROUP);
     if (Object.keys(hiddenSet).length && listFor(HID_GROUP).length) g.push(HID_GROUP);
@@ -1882,6 +1916,7 @@
     acts.push(isFav(c) ? ['unfav', '☆  Quitar de favoritos'] : ['fav', '★  Agregar a favoritos']);
     if (!(isFav(c) && store('favFirst') === chKey(c))) acts.push(['favfirst', '⬆  Abrir este canal al iniciar (primer favorito)']);
     acts.push(isHidden(c) ? ['unhide', '👁  Mostrar canal de nuevo'] : ['hide', '🚫  Ocultar canal (no se ve)']);
+    if (c.web) acts.push(['webdel', '🗑  Quitar de «Sitios web»']);
     acts.push(['cancel', 'Cancelar']);
     $('menuBtns').innerHTML = acts.map(function (a) {
       return '<button class="mbtn focusable" data-act="' + a[0] + '">' + a[1] + '</button>';
@@ -1897,7 +1932,7 @@
     if (sideOpen) bumpSide();
   }
   function toggleFav(c) {
-    if (isFav(c)) { delete favs[chKey(c)]; if (c.yt) ytRemove(c); toast('Quitado de favoritos: ' + c.name); }
+    if (isFav(c)) { delete favs[chKey(c)]; if (c.yt && !c.web) ytRemove(c); toast('Quitado de favoritos: ' + c.name); }
     else { favs[chKey(c)] = 1; toast('★ Agregado a favoritos: ' + c.name); }
     saveSet('favs', favs); afterListChange(c);
   }
@@ -1941,6 +1976,11 @@
       toast('⬆ ' + c.name + ' es tu primer favorito: se abrirá al iniciar la app');
     }
     else if (act === 'hide') hideChannel(c);
+    else if (act === 'webdel') {
+      try { window.Android.removeWebChannel(c.web); } catch (e) { }
+      delete favs[chKey(c)]; saveSet('favs', favs);
+      webChannelsLoad(); refreshChannels(); toast('Quitado de «Sitios web»: ' + c.name);
+    }
     else if (act === 'unhide') unhideChannel(c);
   }
   // Canal sobre el que actúan "mantener OK", MENU y los botones de colores
@@ -2084,7 +2124,10 @@
   };
   window.mitvBack = goBack;                                         // usado por Android (tecla ATRÁS)
   window.mitvPause = function () { if (mode !== 'none' && !listening) stopPlayer(); wallTeardown(); }; // al salir a otra app
-  window.mitvResume = function () { wallSync(); };
+  window.mitvResume = function () {
+    wallSync();
+    if (channels.length && webChannelsLoad()) refreshChannels();   // volviste del navegador con una página nueva guardada como canal
+  };
 
   // OK corto = acción normal · OK mantenido = menú de opciones del canal
   var okTimer = null, okLong = false;

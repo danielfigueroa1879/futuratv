@@ -923,6 +923,32 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void stopLinkServer() { MainActivity.this.stopLinkServer(); }
 
+        /** Navegador interno: abre una dirección (o la última página visitada si viene vacía). */
+        @JavascriptInterface
+        public boolean openBrowser(String url) {
+            final String u = url == null ? "" : url.trim();
+            if (!u.isEmpty() && !u.matches("(?i)^https?://.*")) return false;
+            runOnUiThread(() -> {
+                Intent i = new Intent(MainActivity.this, BrowserActivity.class);
+                i.putExtra("url", u);
+                startActivity(i);
+            });
+            return true;
+        }
+
+        /** Páginas guardadas como canal desde el navegador: [{name,url}] */
+        @JavascriptInterface
+        public String webChannels() { return prefs().getString("webChannels", "[]"); }
+
+        @JavascriptInterface
+        public void removeWebChannel(String url) {
+            try {
+                org.json.JSONArray a = new org.json.JSONArray(prefs().getString("webChannels", "[]")), out = new org.json.JSONArray();
+                for (int i = 0; i < a.length(); i++) if (!a.getJSONObject(i).optString("url").equals(url)) out.put(a.getJSONObject(i));
+                prefs().edit().putString("webChannels", out.toString()).apply();
+            } catch (Exception ignored) { }
+        }
+
         /** Control remoto: cuántos celulares están conectados ahora. */
         @JavascriptInterface
         public String remotePin() { return MainActivity.this.pairPin(); }
