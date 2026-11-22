@@ -39,7 +39,7 @@ async function check(url) {
 
 import { createHash } from 'node:crypto';
 // Solo el dueño: la clave viaja en la cabecera x-clave; aquí solo está su huella (SHA-256), nunca la clave.
-const HUELLA = process.env.FTV_CLAVE_SHA256 || '78bd972f63b0d8e8d5dfe39b7186c6d10e00f20afafff9ab7dd96c58c5ddc1cb';
+const HUELLA = process.env.FTV_CLAVE_SHA256 || 'a4479a7ce53a1fcd4fdf3fb7626939bd40fd0a235c249e71952537d89f5f82f3';
 const autorizado = (req) => createHash('sha256').update(req.headers.get('x-clave') || '').digest('hex') === HUELLA;
 
 export default async (req) => {
