@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.12.4';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.12.5';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -925,6 +925,17 @@
   }
   function saveSet(k, o) { store(k, JSON.stringify(Object.keys(o))); }
   var favs = loadSet('favs'), hiddenSet = loadSet('hidden');
+  // Favoritos predeterminados: vienen marcados de fábrica. El usuario puede quitarlos (y quedan quitados);
+  // se agregan una sola vez por versión de esta lista, sin tocar los que el usuario ya tenga ni los ocultos.
+  var DEFAULT_FAVS = ['Mega', 'CHV', 'Canal 13', 'TV+', 'Bio Bio TV', 'TVN 24 Horas', 'TV Chile',
+    'Retro Plus TV', 'Retro Plus TV Señal 2', 'Retro Plus TV Señal 3', 'VClassicTV', 'VClassicTV Latino',
+    'VClassicTV Tropical', 'Recuerdos Retro Radio TV', 'Mi Radio TV'];
+  var DEFAULT_FAVS_V = '1';
+  function addDefaultFavs() {
+    DEFAULT_FAVS.forEach(function (n) { var k = normName(n); if (!hiddenSet[k]) favs[k] = 1; });
+    saveSet('favs', favs);
+  }
+  if (store('favDefaults') !== DEFAULT_FAVS_V) { addDefaultFavs(); store('favDefaults', DEFAULT_FAVS_V); }
   function chKey(c) { return normName(c.name); }
   function isFav(c) { return !!favs[chKey(c)]; }
   function isHidden(c) { return !!hiddenSet[chKey(c)]; }
@@ -2091,6 +2102,7 @@
       return;
     }
     if (el.id === 'unhideAll') { hiddenSet = {}; saveSet('hidden', hiddenSet); refreshChannels(); updateSettingsInfo(); toast('Todos los canales vuelven a estar visibles'); return; }
+    if (el.id === 'resetFavs') { addDefaultFavs(); refreshChannels(); updateSettingsInfo(); toast('★ Favoritos predeterminados restaurados'); return; }
     if (el.id === 'clearFavs') { favs = {}; saveSet('favs', favs); refreshChannels(); updateSettingsInfo(); toast('Favoritos borrados'); return; }
     if (el.tagName === 'INPUT') {                // OK: empieza a escribir · OK otra vez: termina
       if (document.activeElement === el) { el.blur(); toast('Listo'); }
