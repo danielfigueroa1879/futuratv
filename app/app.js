@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.14.0';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.14.1';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -134,7 +134,7 @@
   var chk = { items: [], running: false, gen: 0, filter: 'all', src: '', name: '' };
   // Acceso solo para el dueño: se abre tocando 5 veces «FuturaTV versión…» en Ajustes y escribiendo el código.
   // En el código solo está la huella SHA-256 del código (no el código). El servidor también lo exige.
-  var ADMIN_HASH = '69673acb9cbe77dfc0a8199cabb3d30dc563891c10452495b7163a27a2e6de97';
+  var ADMIN_HASH = '78bd972f63b0d8e8d5dfe39b7186c6d10e00f20afafff9ab7dd96c58c5ddc1cb';
   function sha256(str) {                         // SHA-256 en JavaScript (funciona igual en TV, celular y navegador)
     var ascii = unescape(encodeURIComponent(String(str)));
     var rr = function (v, n) { return (v >>> n) | (v << (32 - n)); };
