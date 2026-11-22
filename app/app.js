@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.11.0';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.11.1';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -116,7 +116,8 @@
   // De la lista de Free-TV (Internacional) solo América en español… y los de fútbol/deportes de cualquier país
   var INTL_KEEP_LIST = (['Argentina', 'Bolivia', 'Chile', 'Colombia', 'Costa Rica', 'Cuba', 'Dominican Republic', 'Ecuador', 'El Salvador',
     'Guatemala', 'Honduras', 'Mexico', 'Nicaragua', 'Panama', 'Paraguay', 'Peru', 'Puerto Rico', 'Uruguay', 'Venezuela', 'News (ES)']);
-  function intlKeep(c) { return INTL_KEEP_LIST.indexOf(c.group) >= 0 || FUT_WORDS.test(c.name); }
+  var ES_WORDS = /espa[nñ]ol|latino|latin ?am|latam|hispan|spanish/i;
+  function intlKeep(c) { return INTL_KEEP_LIST.indexOf(c.group) >= 0 || FUT_WORDS.test(c.name) || ES_WORDS.test(c.name); }
   var FUT_WORDS = /f[uú]tbol|football|soccer|calcio|\bgol\b|golazo|\bgoal|fifa|uefa|liga\b|laliga|bundesliga|premier|sport|deport|esport/i;
   // Deportes del mundo: lista completa de iptv-org (en línea, se actualiza sola). Va en su propia categoría, no en «Todos»
   var SPORTS_URL = 'https://iptv-org.github.io/iptv/categories/sports.m3u', SPORTS_GROUP = '🏅 Deportes del mundo';
@@ -744,6 +745,7 @@
         if (end < t.length) { end = t.indexOf('\n#EXTINF', end); if (end < 0) end = t.length; } else end = t.length;
         parseM3U(t.slice(pos, end)).forEach(function (c) {
           if (!c.url || lastDead[deadKey(c.url)] || /youtube\.com|youtu\.be|twitch\.tv/i.test(c.url)) return;
+          if (!intlKeep(c)) return;                // solo América en español + fútbol/deportes + canales «en español»
           var country = WORLD_ALIAS[c.group] || c.group || 'International', k = normName(c.name);
           if (have[country + '|' + k] || (country === 'Chile' && have['*|' + k]) || have['u|' + deadKey(c.url)]) return;
           have[country + '|' + k] = 1; have['u|' + deadKey(c.url)] = 1;
