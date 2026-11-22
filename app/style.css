@@ -918,3 +918,4 @@ html.web:not(.phone) #view-live .live-head { display: block; margin: 0 0 2px; }
 html.web:not(.phone) .group-bar { flex-wrap: nowrap; overflow-x: auto; max-width: none; scroll-behavior: smooth; }
 html.web:not(.phone) .group-bar.more { -webkit-mask-image: linear-gradient(90deg, #000 92%, transparent); mask-image: linear-gradient(90deg, #000 92%, transparent); }
 html.web:not(.phone) .group-bar .chip { flex: none; }
+html.web:not(.phone) #view-live > .grid { align-content: start; }   /* las filas juntas arriba (sin estirarse) */
