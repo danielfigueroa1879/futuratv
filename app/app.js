@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.12.4';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.13.0';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -143,11 +143,17 @@
   var FUT_WORDS = /f[uú]tbol|football|soccer|calcio|\bgol\b|golazo|\bgoal|fifa|uefa|liga\b|laliga|bundesliga|premier|sport|deport|esport/i;
   // Deportes del mundo: lista completa de iptv-org (en línea, se actualiza sola). Va en su propia categoría, no en «Todos»
   var SPORTS_URL = 'https://iptv-org.github.io/iptv/categories/sports.m3u', SPORTS_GROUP = '🏅 Deportes del mundo';
-  // Todo el mundo: lista completa de iptv-org (~11.000 canales, por país). Es grande: se carga por detrás, con la app ya abierta,
-  // y sus canales se suman a «🌎 Internacional» sin repetir los que ya están
-  var WORLD_URL = 'https://iptv-org.github.io/iptv/index.country.m3u';
-  var WORLD_ALIAS = { 'United States': 'USA', 'United Kingdom': 'UK', 'Turkiye': 'Turkey', 'South Korea': 'Korea', 'Japan': '日本 / Japan',
-    'Macao': 'Macau', 'Trinidad and Tobago': 'Trinidad' };
+  // Lista en español de iptv-org (~2.400 canales): se carga por detrás, con la app ya abierta, y sus canales
+  // se suman a «🌎 Internacional» por país, sin repetir los que ya están
+  // Canales en español de iptv-org (por idioma): el país sale del identificador (p. ej. «Telefe.ar@SD» → Argentina)
+  var WORLD_URL = 'https://iptv-org.github.io/iptv/languages/spa.m3u';
+  var CC_COUNTRY = { ar: 'Argentina', bo: 'Bolivia', cl: 'Chile', co: 'Colombia', cr: 'Costa Rica', cu: 'Cuba', 'do': 'Dominican Republic',
+    ec: 'Ecuador', sv: 'El Salvador', gt: 'Guatemala', hn: 'Honduras', mx: 'Mexico', ni: 'Nicaragua', pa: 'Panama', py: 'Paraguay',
+    pe: 'Peru', pr: 'Puerto Rico', uy: 'Uruguay', ve: 'Venezuela', us: 'USA', es: 'Spain' };
+  function worldCountry(c) {
+    var m = String(c.tid || '').match(/\.([a-z]{2})(@|$)/i);
+    return (m && CC_COUNTRY[m[1].toLowerCase()]) || 'International';
+  }
   // Enlaces revisados que no funcionan (404, dominio inexistente, certificado inválido): no se muestran
   var DEAD_LIST = 'channels/caidos.json';
   function deadKey(u) { return String(u).replace(/[?&]PlaylistM3UCL$/, '').replace(/^http:/, 'https:').replace(/(\/\/[^\/:]+):\//, '$1/'); }
@@ -708,6 +714,7 @@
           group: (attr('group-title') || '').split(';')[0]
         };
         var tid = attr('tvg-id');
+        meta.tid = tid;
         var tar = tid.match(/^TNTSports(Premium)?\.(\w+)@(\w+)/i);   // TNT Sports de Argentina: nombre claro
         if (tar && (tar[2].toLowerCase() === 'ar' || /argentina/i.test(tar[3] + rawName)))
           meta.name = 'TNT Sports ' + (tar[1] ? 'Premium ' : '') + 'Argentina' + (/^SD$/i.test(tar[3]) || /\bSD\b/.test(rawName) ? ' SD' : '');
@@ -802,8 +809,8 @@
         if (end < t.length) { end = t.indexOf('\n#EXTINF', end); if (end < 0) end = t.length; } else end = t.length;
         parseM3U(t.slice(pos, end)).forEach(function (c) {
           if (!c.url || lastDead[deadKey(c.url)] || /youtube\.com|youtu\.be|twitch\.tv/i.test(c.url)) return;
-          if (!intlKeep(c)) return;                // solo América en español + fútbol/deportes + canales «en español»
-          var country = WORLD_ALIAS[c.group] || c.group || 'International', k = normName(c.name);
+          var country = worldCountry(c), k = normName(c.name);
+          if (country === 'Spain' && !FUT_WORDS.test(c.name)) return;   // América en español (de España solo fútbol/deportes)
           if (have[country + '|' + k] || (country === 'Chile' && have['*|' + k]) || have['u|' + deadKey(c.url)]) return;
           have[country + '|' + k] = 1; have['u|' + deadKey(c.url)] = 1;
           if (FUTCL_NAMES[k]) c.futcl = true;
