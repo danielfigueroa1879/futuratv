@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.12.7';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.12.8';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -933,9 +933,10 @@
   var favs = loadSet('favs'), hiddenSet = loadSet('hidden');
   // Favoritos predeterminados: vienen marcados de fábrica. El usuario puede quitarlos (y quedan quitados);
   // se agregan una sola vez por versión de esta lista, sin tocar los que el usuario ya tenga ni los ocultos.
-  var DEFAULT_FAVS = ['Mega', 'CHV', 'Canal 13', 'TV+', 'Bio Bio TV', 'TVN 24 Horas', 'TV Chile',
+  // El orden de esta lista es el orden de fábrica de ★ Favoritos (el usuario lo cambia con «Mover de lugar»)
+  var DEFAULT_FAVS = ['Mega', 'CHV', 'Canal 13', 'TV+', 'Bio Bio TV', 'TVN 24 Horas', 'TV Chile', 'Fútbol Libre',
     'Retro Plus TV', 'Retro Plus TV Señal 2', 'Retro Plus TV Señal 3', 'VClassicTV', 'VClassicTV Latino',
-    'VClassicTV Tropical', 'Recuerdos Retro Radio TV', 'Mi Radio TV', 'Fútbol Libre', 'Radio America TV'];
+    'VClassicTV Tropical', 'Recuerdos Retro Radio TV', 'Mi Radio TV', 'Radio America TV'];
   function addDefaultFavs(onlyNew) {               // onlyNew: solo los que nunca se agregaron (respeta los que el usuario quitó)
     var done = loadSet('favDefaultsDone');
     if (store('favDefaults') === '2') DEFAULT_FAVS.slice(0, 16).forEach(function (n) { done[normName(n)] = 1; });  // ya aplicados en 2.12.6
@@ -947,6 +948,34 @@
     saveSet('favs', favs); saveSet('favDefaultsDone', done); store('favDefaults', '3');
   }
   addDefaultFavs(true);
+  // Orden de los favoritos: lista de claves guardada; los que no están en ella van al final
+  function favOrder() {
+    var a = null; try { a = JSON.parse(store('favOrder') || 'null'); } catch (e) { }
+    return Array.isArray(a) ? a : DEFAULT_FAVS.map(normName);
+  }
+  function favOrderPos() { var o = {}; favOrder().forEach(function (k, i) { if (o[k] == null) o[k] = i; }); return o; }
+  // Mover un favorito de lugar: se elige «Mover de lugar» en el menú y luego se toca el lugar de destino
+  var moveKey = '';
+  function startFavMove(c) {
+    moveKey = chKey(c); activeGroup = FAV_GROUP; renderGroups(); renderChannels();
+    toast('↕ Toca el lugar donde quieres poner ' + c.name + ' (ATRÁS o tocarlo de nuevo = cancelar)');
+  }
+  function cancelFavMove() { if (!moveKey) return false; moveKey = ''; renderChannels(); toast('Mover cancelado'); return true; }
+  function finishFavMove(target) {
+    var from = moveKey, to = chKey(target); moveKey = '';
+    if (!target || from === to || target.isCountry) { renderChannels(); toast('Mover cancelado'); return; }
+    var keys = [];
+    listFor(FAV_GROUP).forEach(function (c) { var k = chKey(c); if (keys.indexOf(k) < 0) keys.push(k); });
+    var fi = keys.indexOf(from), ti = keys.indexOf(to);
+    if (fi < 0 || ti < 0) { renderChannels(); return; }
+    keys.splice(fi, 1); keys.splice(keys.indexOf(to) + (fi < ti ? 1 : 0), 0, from);
+    favOrder().forEach(function (k) { if (keys.indexOf(k) < 0) keys.push(k); });   // conserva el lugar de los que ahora no se ven
+    store('favOrder', JSON.stringify(keys)); store('favFirst', '');                  // el primero de la lista es el que abre al iniciar
+    refreshChannels();
+    var el = document.querySelector('[data-ch="' + listFor(FAV_GROUP).map(chKey).indexOf(from) + '"]');
+    if (el) { setFocus(el); scrollGridTo(el); }
+    toast('↕ Favorito movido de lugar');
+  }
   function chKey(c) { return normName(c.name); }
   function isFav(c) { return !!favs[chKey(c)]; }
   function isHidden(c) { return !!hiddenSet[chKey(c)]; }
@@ -965,10 +994,15 @@
       }
       return found;
     }
-    if (group === FAV_GROUP) {                     // el elegido como «primero» va arriba (es el que se abre al iniciar)
-      var fl = vis.filter(isFav), first = store('favFirst');
-      if (first) fl.sort(function (a, b) { return (chKey(b) === first) - (chKey(a) === first); });
-      return fl;
+    if (group === FAV_GROUP) {                     // en el orden del usuario; el elegido como «primero» va arriba (se abre al iniciar)
+      var fl = vis.filter(isFav), first = store('favFirst'), pos = favOrderPos();
+      fl = fl.map(function (c, i) { return { c: c, i: i, p: pos[chKey(c)] }; });
+      fl.sort(function (a, b) {
+        if (first && (chKey(a.c) === first) !== (chKey(b.c) === first)) return chKey(a.c) === first ? -1 : 1;
+        var pa = a.p == null ? 1e6 : a.p, pb = b.p == null ? 1e6 : b.p;
+        return pa - pb || a.i - b.i;
+      });
+      return fl.map(function (o) { return o.c; });
     }
     if (group === 'Todos') return vis.filter(function (c) { return !c.intl && !c.yt && !c.mundo; });
     if (group === SPORTS_GROUP) return vis.filter(function (c) { return c.mundo; });
@@ -1032,7 +1066,8 @@
       }
       var now = nowCh && chKey(nowCh) === chKey(c);
       var blk = IS_WEB && webBlocked && webBlocked[chKey(c)];
-      return '<button class="ch focusable' + (now ? ' now' : '') + (blk ? ' web-blk' : '') + '" data-ch="' + i + '">' +
+      var mv = moveKey && chKey(c) === moveKey;
+      return '<button class="ch focusable' + (now ? ' now' : '') + (blk ? ' web-blk' : '') + (mv ? ' moving' : '') + '" data-ch="' + i + '">' +
         (blk ? '<span class="badge blk">Solo en la app</span>' : '') +
         (isFav(c) ? '<span class="badge fav">★</span>' : '') + (now ? '<span class="badge live">EN VIVO</span>' : '') +
         logoHtml(c) + '<span class="nm">' + escapeHtml(c.name) + '</span></button>';
@@ -1957,6 +1992,7 @@
     if (!(mode === 'pip' && nowCh === c)) acts.push(['pip', '⧉  Ver en ventana chica (PiP)']);
     if (mode === 'pip') acts.push(['pipmove', '⇲  Mover la ventana PiP a otra esquina']);
     acts.push(isFav(c) ? ['unfav', '☆  Quitar de favoritos'] : ['fav', '★  Agregar a favoritos']);
+    if (isFav(c) && !sideOpen && listFor(FAV_GROUP).length > 1) acts.push(['favmove', '↕  Mover de lugar en Favoritos']);
     if (!(isFav(c) && store('favFirst') === chKey(c))) acts.push(['favfirst', '⬆  Abrir este canal al iniciar (primer favorito)']);
     acts.push(isHidden(c) ? ['unhide', '👁  Mostrar canal de nuevo'] : ['hide', '🚫  Ocultar canal (no se ve)']);
     if (c.web && !c.builtinWeb) acts.push(['webdel', '🗑  Quitar de «Sitios web»']);
@@ -2019,6 +2055,7 @@
       toast('⬆ ' + c.name + ' es tu primer favorito: se abrirá al iniciar la app');
     }
     else if (act === 'hide') hideChannel(c);
+    else if (act === 'favmove') startFavMove(c);
     else if (act === 'webdel') {
       try { window.Android.removeWebChannel(c.web); } catch (e) { }
       delete favs[chKey(c)]; saveSet('favs', favs);
@@ -2064,6 +2101,7 @@
     if (el.classList.contains('tab')) { showView(el.getAttribute('data-view')); return; }
     if (el.hasAttribute('data-app')) { launchApp(APPS[+el.getAttribute('data-app')]); return; }
     if (el.hasAttribute('data-group')) {
+      moveKey = '';
       if (searchOpen) closeSearch(true);
       activeGroup = el.getAttribute('data-group'); renderGroups(); renderChannels(); markPlaying();
       setFocus(document.querySelector('.chip.active'));
@@ -2071,6 +2109,7 @@
     }
     if (el.hasAttribute('data-ch')) {
       var c = filtered[+el.getAttribute('data-ch')];
+      if (moveKey) { finishFavMove(activeGroup === FAV_GROUP ? c : null); return; }
       if (c && c.isCountry) { openCountry(c); return; }
       if (mode === 'pip' && nowCh && chKey(nowCh) === chKey(c)) { setMode('full'); return; } // 2º OK = pantalla completa
       playChannel(filtered.slice(), +el.getAttribute('data-ch'), activeGroup, mode === 'pip' ? 'pip' : 'full');
@@ -2139,6 +2178,7 @@
     if (tvRemoteOpen()) { tvClose(); return true; }      // celular: cierra el control de la TV
     if (pipMoving) { stopPipMove(); return true; }       // ATRÁS en modo mover: deja la ventana ahí
     if (wallBig) { wallCollapse(); return true; }        // muro de favoritos: el agrandado vuelve a su lugar
+    if (cancelFavMove()) return true;                    // estaba moviendo un favorito de lugar
     if (listening) { cancelVoice(); return true; }
     if (document.activeElement && document.activeElement.tagName === 'INPUT') document.activeElement.blur();
     if (menuOpen) { closeMenu(); return true; }
