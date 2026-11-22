@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.12.5';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.12.6';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -262,10 +262,16 @@
     }
     window.open(url || 'https://www.google.com/', '_blank');
   }
+  // Sitios web que vienen de fábrica como canales (se abren en el navegador; son favoritos predeterminados)
+  var DEFAULT_WEB = [{ name: 'Fútbol Libre', url: 'https://futbollibrego.org/', builtin: true }];
   // Las páginas guardadas con «📺 Canal» en el navegador: se muestran como canales (yt: 'web' = se abren fuera del reproductor)
   function webChannelsLoad() {
     var a = [];
     if (IS_ANDROID && typeof window.Android.webChannels === 'function') { try { a = JSON.parse(window.Android.webChannels()) || []; } catch (e) { a = []; } }
+    var hostOf = function (u) { try { return new URL(u).hostname.replace(/^www\./, ''); } catch (e) { return ''; } };
+    a = DEFAULT_WEB.filter(function (d) {
+      return !a.some(function (o) { return o && hostOf(o.url || '') === hostOf(d.url); });
+    }).concat(a);
     var key = JSON.stringify(a);
     if (key === webChKey) return false;
     webChKey = key;
@@ -273,7 +279,7 @@
     a.forEach(function (o) {
       if (!o || !/^https?:\/\//i.test(o.url || '')) return;
       var host = ''; try { host = new URL(o.url).hostname; } catch (e) { }
-      channels.push({ name: String(o.name || host).slice(0, 60), url: o.url, web: o.url, yt: 'web', group: WEB_GROUP,
+      channels.push({ name: String(o.name || host).slice(0, 60), url: o.url, web: o.url, yt: 'web', group: WEB_GROUP, builtinWeb: !!o.builtin,
         logo: host ? 'https://www.google.com/s2/favicons?sz=128&domain=' + host : '' });
     });
     return true;
@@ -929,8 +935,8 @@
   // se agregan una sola vez por versión de esta lista, sin tocar los que el usuario ya tenga ni los ocultos.
   var DEFAULT_FAVS = ['Mega', 'CHV', 'Canal 13', 'TV+', 'Bio Bio TV', 'TVN 24 Horas', 'TV Chile',
     'Retro Plus TV', 'Retro Plus TV Señal 2', 'Retro Plus TV Señal 3', 'VClassicTV', 'VClassicTV Latino',
-    'VClassicTV Tropical', 'Recuerdos Retro Radio TV', 'Mi Radio TV'];
-  var DEFAULT_FAVS_V = '1';
+    'VClassicTV Tropical', 'Recuerdos Retro Radio TV', 'Mi Radio TV', 'Fútbol Libre'];
+  var DEFAULT_FAVS_V = '2';
   function addDefaultFavs() {
     DEFAULT_FAVS.forEach(function (n) { var k = normName(n); if (!hiddenSet[k]) favs[k] = 1; });
     saveSet('favs', favs);
@@ -1948,7 +1954,7 @@
     acts.push(isFav(c) ? ['unfav', '☆  Quitar de favoritos'] : ['fav', '★  Agregar a favoritos']);
     if (!(isFav(c) && store('favFirst') === chKey(c))) acts.push(['favfirst', '⬆  Abrir este canal al iniciar (primer favorito)']);
     acts.push(isHidden(c) ? ['unhide', '👁  Mostrar canal de nuevo'] : ['hide', '🚫  Ocultar canal (no se ve)']);
-    if (c.web) acts.push(['webdel', '🗑  Quitar de «Sitios web»']);
+    if (c.web && !c.builtinWeb) acts.push(['webdel', '🗑  Quitar de «Sitios web»']);
     acts.push(['cancel', 'Cancelar']);
     $('menuBtns').innerHTML = acts.map(function (a) {
       return '<button class="mbtn focusable" data-act="' + a[0] + '">' + a[1] + '</button>';
