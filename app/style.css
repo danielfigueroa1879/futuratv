@@ -885,3 +885,8 @@ html.web:not(.phone) .group-bar { max-width: none; flex: 1; min-width: 0; flex-w
 .phone .m3u-row .nm { font-size: 15px; } .phone .m3u-row .nm small { font-size: 12px; }
 .phone .m3u-row .u { flex-basis: 100%; order: 3; font-size: 12px; }
 .phone .m3u-row .btn { margin-left: auto; padding: 6px 14px; font-size: 14px; }
+/* PC (navegador): la grilla de canales y el muro de favoritos ocupan todo el alto de la ventana */
+html.web:not(.phone) #view-live { display: flex; flex-direction: column; }
+html.web:not(.phone) #view-live > .grid { flex: 1 1 auto; min-height: 0; max-height: none !important; }
+html.web:not(.phone) body { display: flex; flex-direction: column; }
+html.web:not(.phone) body > .view { flex: 1 1 auto; min-height: 0; height: auto; }
