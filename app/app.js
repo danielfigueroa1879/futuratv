@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.12.6';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.12.7';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -935,13 +935,18 @@
   // se agregan una sola vez por versión de esta lista, sin tocar los que el usuario ya tenga ni los ocultos.
   var DEFAULT_FAVS = ['Mega', 'CHV', 'Canal 13', 'TV+', 'Bio Bio TV', 'TVN 24 Horas', 'TV Chile',
     'Retro Plus TV', 'Retro Plus TV Señal 2', 'Retro Plus TV Señal 3', 'VClassicTV', 'VClassicTV Latino',
-    'VClassicTV Tropical', 'Recuerdos Retro Radio TV', 'Mi Radio TV', 'Fútbol Libre'];
-  var DEFAULT_FAVS_V = '2';
-  function addDefaultFavs() {
-    DEFAULT_FAVS.forEach(function (n) { var k = normName(n); if (!hiddenSet[k]) favs[k] = 1; });
-    saveSet('favs', favs);
+    'VClassicTV Tropical', 'Recuerdos Retro Radio TV', 'Mi Radio TV', 'Fútbol Libre', 'Radio America TV'];
+  function addDefaultFavs(onlyNew) {               // onlyNew: solo los que nunca se agregaron (respeta los que el usuario quitó)
+    var done = loadSet('favDefaultsDone');
+    if (store('favDefaults') === '2') DEFAULT_FAVS.slice(0, 16).forEach(function (n) { done[normName(n)] = 1; });  // ya aplicados en 2.12.6
+    DEFAULT_FAVS.forEach(function (n) {
+      var k = normName(n);
+      if ((!onlyNew || !done[k]) && !hiddenSet[k]) favs[k] = 1;
+      done[k] = 1;
+    });
+    saveSet('favs', favs); saveSet('favDefaultsDone', done); store('favDefaults', '3');
   }
-  if (store('favDefaults') !== DEFAULT_FAVS_V) { addDefaultFavs(); store('favDefaults', DEFAULT_FAVS_V); }
+  addDefaultFavs(true);
   function chKey(c) { return normName(c.name); }
   function isFav(c) { return !!favs[chKey(c)]; }
   function isHidden(c) { return !!hiddenSet[chKey(c)]; }
