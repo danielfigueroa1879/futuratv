@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.12.2';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.12.3';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -37,6 +37,26 @@
   }
   fitWeb();
   window.addEventListener('resize', fitWeb);
+  // PC (navegador): parte de arriba en dos filas — Buscar y «Favoritos en vivo» suben a la fila del logo,
+  // y las categorías quedan en una sola línea que se desliza hacia el lado (rueda del mouse / trackpad)
+  function webTopbar() {
+    if (!IS_WEB || IS_PHONE) return;
+    var tabs = document.getElementById('tabs'), sb = document.getElementById('searchBtn'), wt = document.getElementById('wallToggle'),
+      gb = document.getElementById('groupBar');
+    if (!tabs || !sb) return;
+    tabs.appendChild(sb); if (wt) tabs.appendChild(wt);
+    if (!gb) return;
+    var more = function () { gb.classList.toggle('more', gb.scrollLeft + gb.clientWidth < gb.scrollWidth - 4); };   // borde difuminado solo si hay más
+    gb.addEventListener('wheel', function (e) {
+      if (gb.scrollWidth <= gb.clientWidth + 2) return;
+      if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { gb.scrollLeft += e.deltaY; e.preventDefault(); }
+    }, { passive: false });
+    gb.addEventListener('scroll', more, { passive: true });
+    window.addEventListener('resize', more);
+    if (window.MutationObserver) new MutationObserver(more).observe(gb, { childList: true });
+    more();
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', webTopbar); else webTopbar();
   document.addEventListener('DOMContentLoaded', fitWeb);
   function rectOf(el) {                        // medidas en px de la página (sin la escala del navegador)
     var r = el.getBoundingClientRect();
@@ -649,6 +669,7 @@
   var currentView = 'apps';
   function showView(name) {
     currentView = name;
+    document.documentElement.setAttribute('data-view', name);
     if (name === 'settings' && IS_PHONE) tvUpdateUi();
     ['apps', 'live', 'settings'].forEach(function (v) { $('view-' + v).classList.toggle('hidden', v !== name); });
     Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (t) {
