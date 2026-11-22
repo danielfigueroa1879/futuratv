@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.9.1';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.10.0';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -111,6 +111,11 @@
   var FUT_CHILE = { chvdeportes: 1, futgo: 1, d13: 1 };
   // Deportes del mundo: lista completa de iptv-org (en línea, se actualiza sola). Va en su propia categoría, no en «Todos»
   var SPORTS_URL = 'https://iptv-org.github.io/iptv/categories/sports.m3u', SPORTS_GROUP = '🏅 Deportes del mundo';
+  // Todo el mundo: lista completa de iptv-org (~11.000 canales, por país). Es grande: se carga por detrás, con la app ya abierta,
+  // y sus canales se suman a «🌎 Internacional» sin repetir los que ya están
+  var WORLD_URL = 'https://iptv-org.github.io/iptv/index.country.m3u';
+  var WORLD_ALIAS = { 'United States': 'USA', 'United Kingdom': 'UK', 'Turkiye': 'Turkey', 'South Korea': 'Korea', 'Japan': '日本 / Japan',
+    'Macao': 'Macau', 'Trinidad and Tobago': 'Trinidad' };
   // Enlaces revisados que no funcionan (404, dominio inexistente, certificado inválido): no se muestran
   var DEAD_LIST = 'channels/caidos.json';
   function deadKey(u) { return String(u).replace(/[?&]PlaylistM3UCL$/, '').replace(/^http:/, 'https:').replace(/(\/\/[^\/:]+):\//, '$1/'); }
@@ -121,6 +126,17 @@
     'Bolivia', 'Paraguay', 'Dominican Republic', 'Cuba', 'Panama', 'Guatemala', 'Honduras', 'El Salvador', 'Nicaragua',
     'Puerto Rico', 'News (ES)', 'Chile'];
   var INTL_ES = {
+    'International': 'Varios países', 'Colombia': 'Colombia', 'Bolivia': 'Bolivia', 'Ecuador': 'Ecuador', 'Honduras': 'Honduras',
+    'Guatemala': 'Guatemala', 'Uruguay': 'Uruguay', 'El Salvador': 'El Salvador', 'Puerto Rico': 'Puerto Rico', 'Nicaragua': 'Nicaragua',
+    'Cuba': 'Cuba', 'Pakistan': 'Pakistán', 'Vietnam': 'Vietnam', 'Thailand': 'Tailandia', 'Bangladesh': 'Bangladés',
+    'New Zealand': 'Nueva Zelanda', 'Uzbekistan': 'Uzbekistán', 'Haiti': 'Haití', 'Cambodia': 'Camboya', 'Afghanistan': 'Afganistán',
+    'South Africa': 'Sudáfrica', 'Jordan': 'Jordania', 'Palestine': 'Palestina', 'Ivory Coast': 'Costa de Marfil', 'Cameroon': 'Camerún',
+    'Democratic Republic of the Congo': 'Rep. Dem. del Congo', 'Philippines': 'Filipinas', 'Myanmar': 'Birmania', 'Morocco': 'Marruecos',
+    'Kuwait': 'Kuwait', 'Syria': 'Siria', 'Algeria': 'Argelia', 'Singapore': 'Singapur', 'Jamaica': 'Jamaica', 'Malaysia': 'Malasia',
+    'Tajikistan': 'Tayikistán', 'Kyrgyzstan': 'Kirguistán', 'Senegal': 'Senegal', 'Ghana': 'Ghana', 'Tunisia': 'Túnez', 'Libya': 'Libia',
+    'Ethiopia': 'Etiopía', 'Oman': 'Omán', 'Bahrain': 'Baréin', 'Yemen': 'Yemen', 'Vatican City': 'Vaticano', 'Guyana': 'Guyana',
+    'Bahamas': 'Bahamas', 'Belize': 'Belice', 'Suriname': 'Surinam', 'Curacao': 'Curazao', 'Martinique': 'Martinica', 'Guadeloupe': 'Guadalupe',
+    'Sri Lanka': 'Sri Lanka', 'Nepal': 'Nepal', 'Uganda': 'Uganda', 'Tanzania': 'Tanzania', 'Laos': 'Laos', 'Maldives': 'Maldivas',
     'Mexico': 'México', 'Spain': 'España', 'Peru': 'Perú', 'News (ES)': 'Noticias en español', 'Italy': 'Italia',
     'VOD Italy': 'Italia (a pedido)', 'Poland': 'Polonia', 'Hungary': 'Hungría', 'Greece': 'Grecia', 'Russia': 'Rusia',
     'UK': 'Reino Unido', 'Ukraine': 'Ucrania', 'News': 'Noticias en inglés', 'United Arab Emirates': 'Emiratos Árabes',
@@ -698,9 +714,39 @@
       return t;
     }).catch(function (e) { if (cached) return cached; throw e; });
   }
-  var loadingChannels = false;
+  var loadingChannels = false, lastDead = {}, worldLoaded = false;
+  function loadWorld() {
+    if (worldLoaded || !channels.length) return;
+    worldLoaded = true;
+    getText(WORLD_URL).then(function (t) {
+      // fuera los que necesitan cabeceras especiales (no se pueden reproducir desde la app)
+      t = t.replace(/#EXTINF[^\n]*\n(?:#EXTVLCOPT[^\n]*\n)+[^\n]*\n?/g, '');
+      var have = {}, added = 0, pos = 0, gen = channels;
+      channels.forEach(function (c) { if (c.intl) have[c.country + '|' + normName(c.name)] = 1; else have['*|' + normName(c.name)] = 1; });
+      var step = function () {                   // de a trozos de ~150 KB: la app no se congela mientras procesa
+        if (gen !== channels) return;            // se recargaron las listas mientras tanto
+        var end = pos + 150000;
+        if (end < t.length) { end = t.indexOf('\n#EXTINF', end); if (end < 0) end = t.length; } else end = t.length;
+        parseM3U(t.slice(pos, end)).forEach(function (c) {
+          if (!c.url || lastDead[deadKey(c.url)] || /youtube\.com|youtu\.be|twitch\.tv/i.test(c.url)) return;
+          var country = WORLD_ALIAS[c.group] || c.group || 'International', k = normName(c.name);
+          if (have[country + '|' + k] || (country === 'Chile' && have['*|' + k])) return;
+          have[country + '|' + k] = 1;
+          c.intl = true; c.country = country; c.group = INTL_PREFIX + country; c._f = fold(c.name);
+          channels.push(c); added++;
+        });
+        pos = end;
+        if (pos < t.length) { setTimeout(step, 30); return; }
+        if (!added) return;
+        var inIntl = activeGroup === INTL_GROUP || activeGroup.indexOf(INTL_PREFIX) === 0;
+        if (currentView === 'live' && (inIntl || searchOpen)) refreshChannels();   // lo que estás viendo se actualiza al tiro
+        else { buildGroups(); if (currentView === 'live' && !searchOpen) liveStatusText(); }
+      };
+      step();
+    }).catch(function () { worldLoaded = false; });
+  }
   function loadChannels() {
-    loadingChannels = true;
+    loadingChannels = true; worldLoaded = false;
     var extraUrls = m3uLists();
     $('liveStatus').textContent = 'Cargando lista de canales…';
     $('liveStatus').classList.remove('hidden');
@@ -723,6 +769,7 @@
     }).catch(function () { return {}; });
     Promise.all([chile, extra, intl, dead, fut, sports]).then(function (lists) {
       var seen = {}, deadSet = lists[3];
+      lastDead = deadSet;
       var alive = function (c) { return !deadSet[deadKey(c.url)]; };
       lists[0] = lists[0].filter(alive); lists[2] = lists[2].filter(alive);
       var labels = {};
@@ -764,6 +811,7 @@
       refreshChannels();
       if (window.mitvReadyFast) window.mitvReadyFast();
       autoStartFavorite();
+      setTimeout(loadWorld, 4000);              // la lista mundial, por detrás (no frena la apertura)
       var failed = lists[1].filter(function (x) { return m3uStatus[x.u] < 0; }).length;
       if (failed) $('liveStatus').textContent += ' (' + (failed === 1 ? 'una lista extra no se pudo cargar' : failed + ' listas extra no se pudieron cargar') + ': revisa Ajustes)';
       renderM3uLists();
@@ -781,6 +829,7 @@
   };
 
   // ---------- Favoritos y ocultos ----------
+  var SEARCH_MAX = 300;
   var FAV_GROUP = '★ Favoritos', HID_GROUP = 'Ocultos', SEARCH_GROUP = 'Búsqueda';
   var searchOpen = false, searchQuery = '';
   function fold(t) {
@@ -798,17 +847,20 @@
   function chKey(c) { return normName(c.name); }
   function isFav(c) { return !!favs[chKey(c)]; }
   function isHidden(c) { return !!hiddenSet[chKey(c)]; }
+  function hasHidden() { for (var k in hiddenSet) return true; return false; }
 
   function listFor(group) {
     if (group === HID_GROUP) return channels.filter(isHidden);
-    var vis = channels.filter(function (c) { return !isHidden(c); });
+    var vis = hasHidden() ? channels.filter(function (c) { return !isHidden(c); }) : channels.slice();
     if (group === SEARCH_GROUP) {
       var words = fold(searchQuery).trim().split(/\s+/).filter(Boolean);
       if (!words.length) return [];
-      return vis.filter(function (c) {
-        var n = fold(c.name);
-        return words.every(function (w) { return n.indexOf(w) >= 0; });
-      });
+      var found = [];
+      for (var i = 0; i < vis.length && found.length < SEARCH_MAX; i++) {   // hasta 300: rápido aunque haya 15.000 canales
+        var c = vis[i], n = c._f || (c._f = fold(c.name));
+        if (words.every(function (w) { return n.indexOf(w) >= 0; })) found.push(c);
+      }
+      return found;
     }
     if (group === FAV_GROUP) {                     // el elegido como «primero» va arriba (es el que se abre al iniciar)
       var fl = vis.filter(isFav), first = store('favFirst');
@@ -925,13 +977,16 @@
   }
 
   // Vuelve a dibujar todo manteniendo el foco en una posición parecida
+  function liveStatusText() {
+    $('liveStatus').textContent = listFor('Todos').length + ' canales de Chile' + (intlCount() ? ' · ' + intlCount() + ' internacionales' : '') +
+      (Object.keys(favs).length ? ' · ' + listFor(FAV_GROUP).length + ' favoritos' : '') +
+      (listFor(HID_GROUP).length ? ' · ' + listFor(HID_GROUP).length + ' ocultos' : '');
+  }
   function refreshChannels() {
     var idx = focused && focused.hasAttribute('data-ch') ? +focused.getAttribute('data-ch') : -1;
     buildGroups(); renderGroups(); renderChannels();
     if (searchOpen) updateSearchStatus(); else if (activeGroup.indexOf(INTL_PREFIX) === 0) updateCountryStatus();
-    else $('liveStatus').textContent = listFor('Todos').length + ' canales de Chile' + (intlCount() ? ' · ' + intlCount() + ' internacionales' : '') +
-      (Object.keys(favs).length ? ' · ' + listFor(FAV_GROUP).length + ' favoritos' : '') +
-      (listFor(HID_GROUP).length ? ' · ' + listFor(HID_GROUP).length + ' ocultos' : '');
+    else liveStatusText();
     if (idx >= 0 && currentView === 'live') {
       var el = document.querySelector('[data-ch="' + Math.min(idx, filtered.length - 1) + '"]');
       setFocus(el || document.querySelector('.chip.active'));
@@ -983,7 +1038,7 @@
   }
   function updateSearchStatus() {
     var q = searchQuery.trim();
-    $('liveStatus').textContent = q ? filtered.length + ' resultado' + (filtered.length === 1 ? '' : 's') + ' para «' + q + '»' + (IS_PHONE ? '' : ' · ▼ para ir a los resultados') : 'Buscar canal';
+    $('liveStatus').textContent = q ? (filtered.length >= SEARCH_MAX ? 'Más de ' + SEARCH_MAX + ' resultados (escribe más para afinar)' : filtered.length + ' resultado' + (filtered.length === 1 ? '' : 's')) + ' para «' + q + '»' + (IS_PHONE ? '' : ' · ▼ para ir a los resultados') : 'Buscar canal';
   }
   function pressKey(k) {
     if (k === 'DEL') searchQuery = searchQuery.slice(0, -1);
