@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.10.0';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.11.0';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -109,6 +109,15 @@
   // Fútbol: canales gratuitos y oficiales (lista incluida en la app) + los de fútbol de la lista chilena
   var FUT_LIST = 'channels/futbol.m3u', FUT_GROUP = '⚽ Fútbol';
   var FUT_CHILE = { chvdeportes: 1, futgo: 1, d13: 1 };
+  // ⚽ Fútbol Chile: los canales de fútbol chileno de todas las listas (por nombre o por su identificador .cl)
+  var FUTCL_GROUP = '⚽ Fútbol Chile';
+  var FUTCL_ID = /^(TNTSports(Premium)?|D13|Deportes13|ChileVisionDeportes|CHVDeportes|FutGO|CDF\w*)\.cl\b/i;
+  var FUTCL_NAMES = { chvdeportes: 1, futgo: 1, d13: 1, deportes13: 1, chilevisiondeportes: 1, tntsportschile: 1, tntsportspremiumchile: 1 };
+  // De la lista de Free-TV (Internacional) solo América en español… y los de fútbol/deportes de cualquier país
+  var INTL_KEEP_LIST = (['Argentina', 'Bolivia', 'Chile', 'Colombia', 'Costa Rica', 'Cuba', 'Dominican Republic', 'Ecuador', 'El Salvador',
+    'Guatemala', 'Honduras', 'Mexico', 'Nicaragua', 'Panama', 'Paraguay', 'Peru', 'Puerto Rico', 'Uruguay', 'Venezuela', 'News (ES)']);
+  function intlKeep(c) { return INTL_KEEP_LIST.indexOf(c.group) >= 0 || FUT_WORDS.test(c.name); }
+  var FUT_WORDS = /f[uú]tbol|football|soccer|calcio|\bgol\b|golazo|\bgoal|fifa|uefa|liga\b|laliga|bundesliga|premier|sport|deport|esport/i;
   // Deportes del mundo: lista completa de iptv-org (en línea, se actualiza sola). Va en su propia categoría, no en «Todos»
   var SPORTS_URL = 'https://iptv-org.github.io/iptv/categories/sports.m3u', SPORTS_GROUP = '🏅 Deportes del mundo';
   // Todo el mundo: lista completa de iptv-org (~11.000 canales, por país). Es grande: se carga por detrás, con la app ya abierta,
@@ -643,6 +652,12 @@
           star: rawName.indexOf('✪') >= 0,
           group: (attr('group-title') || '').split(';')[0]
         };
+        var tid = attr('tvg-id');
+        if (FUTCL_ID.test(tid)) {                  // fútbol chileno (TNT Sports Chile, D13, CHV Deportes…)
+          meta.futcl = true;
+          var tnt = tid.match(/^TNTSports(Premium)?\.cl/i);
+          if (tnt) meta.name = 'TNT Sports ' + (tnt[1] ? 'Premium ' : '') + 'Chile';
+        }
       } else if (line.charAt(0) !== '#' && meta) {
         meta.url = line; out.push(meta); meta = null;
       }
@@ -722,7 +737,7 @@
       // fuera los que necesitan cabeceras especiales (no se pueden reproducir desde la app)
       t = t.replace(/#EXTINF[^\n]*\n(?:#EXTVLCOPT[^\n]*\n)+[^\n]*\n?/g, '');
       var have = {}, added = 0, pos = 0, gen = channels;
-      channels.forEach(function (c) { if (c.intl) have[c.country + '|' + normName(c.name)] = 1; else have['*|' + normName(c.name)] = 1; });
+      channels.forEach(function (c) { have['u|' + deadKey(c.url)] = 1; if (c.intl) have[c.country + '|' + normName(c.name)] = 1; else have['*|' + normName(c.name)] = 1; });
       var step = function () {                   // de a trozos de ~150 KB: la app no se congela mientras procesa
         if (gen !== channels) return;            // se recargaron las listas mientras tanto
         var end = pos + 150000;
@@ -730,8 +745,9 @@
         parseM3U(t.slice(pos, end)).forEach(function (c) {
           if (!c.url || lastDead[deadKey(c.url)] || /youtube\.com|youtu\.be|twitch\.tv/i.test(c.url)) return;
           var country = WORLD_ALIAS[c.group] || c.group || 'International', k = normName(c.name);
-          if (have[country + '|' + k] || (country === 'Chile' && have['*|' + k])) return;
-          have[country + '|' + k] = 1;
+          if (have[country + '|' + k] || (country === 'Chile' && have['*|' + k]) || have['u|' + deadKey(c.url)]) return;
+          have[country + '|' + k] = 1; have['u|' + deadKey(c.url)] = 1;
+          if (FUTCL_NAMES[k]) c.futcl = true;
           c.intl = true; c.country = country; c.group = INTL_PREFIX + country; c._f = fold(c.name);
           channels.push(c); added++;
         });
@@ -795,8 +811,11 @@
           seen[k] = 1; c.group = lab; channels.push(c);
         });
       });
+      var urls = {};
+      channels.forEach(function (c) { urls[deadKey(c.url)] = 1; });
       lists[2].forEach(function (c) {
         if (/youtube\.com|youtu\.be|twitch\.tv/i.test(c.url)) return;   // no se pueden reproducir directo
+        if (!intlKeep(c) || urls[deadKey(c.url)]) return;                 // solo América en español + fútbol; sin repetir enlaces
         var k = normName(c.name);
         if (seen[k]) return;
         seen[k] = 1;
@@ -805,6 +824,7 @@
         c.group = INTL_PREFIX + c.country;
         channels.push(c);
       });
+      channels.forEach(function (c) { if (FUTCL_NAMES[normName(c.name)]) c.futcl = true; });
       if (!channels.length) throw new Error('las listas están vacías');
       ytMergeInto(channels);
       activeGroup = listFor(FAV_GROUP).length ? FAV_GROUP : 'Todos';
@@ -870,6 +890,7 @@
     if (group === 'Todos') return vis.filter(function (c) { return !c.intl && !c.yt && !c.mundo; });
     if (group === SPORTS_GROUP) return vis.filter(function (c) { return c.mundo; });
     if (group === FUT_GROUP) return vis.filter(function (c) { return c.futbol; });
+    if (group === FUTCL_GROUP) return vis.filter(function (c) { return c.futcl; });
     if (group === INTL_GROUP) return intlCountries(vis);
     return vis.filter(function (c) { return c.group === group; });
   }
@@ -890,7 +911,8 @@
     if (listFor(FAV_GROUP).length) g.push(FAV_GROUP);
     g.push('Todos');
     var seen = {};
-    if (listFor(FUT_GROUP).length) { g.push(FUT_GROUP); seen[FUT_GROUP] = 1; }   // ⚽ Fútbol va justo después de Todos
+    if (listFor(FUTCL_GROUP).length) { g.push(FUTCL_GROUP); seen[FUTCL_GROUP] = 1; }   // ⚽ Fútbol Chile y ⚽ Fútbol, justo después de Todos
+    if (listFor(FUT_GROUP).length) { g.push(FUT_GROUP); seen[FUT_GROUP] = 1; }
     if (listFor(SPORTS_GROUP).length) { g.push(SPORTS_GROUP); seen[SPORTS_GROUP] = 1; }
     listFor('Todos').forEach(function (c) { if (!seen[c.group]) { seen[c.group] = 1; g.push(c.group); } });
     if (intlCount()) g.push(INTL_GROUP);
