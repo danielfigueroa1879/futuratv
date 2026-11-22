@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.11.1';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.11.2';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -111,6 +111,7 @@
   var FUT_CHILE = { chvdeportes: 1, futgo: 1, d13: 1 };
   // ⚽ Fútbol Chile: los canales de fútbol chileno de todas las listas (por nombre o por su identificador .cl)
   var FUTCL_GROUP = '⚽ Fútbol Chile';
+  var TNT_RE = /^tnt sports/i;                   // todos los TNT Sports también van en ⚽ Fútbol
   var FUTCL_ID = /^(TNTSports(Premium)?|D13|Deportes13|ChileVisionDeportes|CHVDeportes|FutGO|CDF\w*)\.cl\b/i;
   var FUTCL_NAMES = { chvdeportes: 1, futgo: 1, d13: 1, deportes13: 1, chilevisiondeportes: 1, tntsportschile: 1, tntsportspremiumchile: 1 };
   // De la lista de Free-TV (Internacional) solo América en español… y los de fútbol/deportes de cualquier país
@@ -654,7 +655,10 @@
           group: (attr('group-title') || '').split(';')[0]
         };
         var tid = attr('tvg-id');
-        if (FUTCL_ID.test(tid)) {                  // fútbol chileno (TNT Sports Chile, D13, CHV Deportes…)
+        var tar = tid.match(/^TNTSports(Premium)?\.(\w+)@(\w+)/i);   // TNT Sports de Argentina: nombre claro
+        if (tar && (tar[2].toLowerCase() === 'ar' || /argentina/i.test(tar[3] + rawName)))
+          meta.name = 'TNT Sports ' + (tar[1] ? 'Premium ' : '') + 'Argentina' + (/^SD$/i.test(tar[3]) || /\bSD\b/.test(rawName) ? ' SD' : '');
+        if (FUTCL_ID.test(tid) && !/Argentina/i.test(tid + rawName)) {                  // fútbol chileno (TNT Sports Chile, D13, CHV Deportes…)
           meta.futcl = true;
           var tnt = tid.match(/^TNTSports(Premium)?\.cl/i);
           if (tnt) meta.name = 'TNT Sports ' + (tnt[1] ? 'Premium ' : '') + 'Chile';
@@ -750,6 +754,7 @@
           if (have[country + '|' + k] || (country === 'Chile' && have['*|' + k]) || have['u|' + deadKey(c.url)]) return;
           have[country + '|' + k] = 1; have['u|' + deadKey(c.url)] = 1;
           if (FUTCL_NAMES[k]) c.futcl = true;
+          if (TNT_RE.test(c.name)) c.futbol = true;
           c.intl = true; c.country = country; c.group = INTL_PREFIX + country; c._f = fold(c.name);
           channels.push(c); added++;
         });
@@ -826,7 +831,7 @@
         c.group = INTL_PREFIX + c.country;
         channels.push(c);
       });
-      channels.forEach(function (c) { if (FUTCL_NAMES[normName(c.name)]) c.futcl = true; });
+      channels.forEach(function (c) { if (FUTCL_NAMES[normName(c.name)]) c.futcl = true; if (TNT_RE.test(c.name)) c.futbol = true; });
       if (!channels.length) throw new Error('las listas están vacías');
       ytMergeInto(channels);
       activeGroup = listFor(FAV_GROUP).length ? FAV_GROUP : 'Todos';
