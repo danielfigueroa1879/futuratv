@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.14.4';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.14.5';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -1858,7 +1858,10 @@
     renderSide(true);
     $('player').classList.toggle('list-h', LIST_H);
     $('player').classList.toggle('side-v', !LIST_H);              // celular: con la lista abierta no se tapa con nombre ni botones
-    if (LIST_H) { hbMarkCtrl(); hbTimeTick(); }
+    $('hbar').classList.toggle('ctrl-only', !LIST_H);                // menú vertical: también la barra de tiempo (sin tarjetas)
+    if (!LIST_H) $('hbar').classList.remove('hidden');
+    if (LIST_H) hbMarkCtrl();
+    hbTimeTick();
     $('osd').classList.add('fade');
     bumpSide();
   }
@@ -2000,7 +2003,7 @@
     if (v.paused) { var p = v.play(); if (p && p.catch) p.catch(function () { }); } else v.pause();
   }
   function hbTimeTick() {
-    if (!LIST_H || !sideOpen) return;
+    if (!sideOpen) return;
     var v = $('video'), r = liveRange();
     $('hcPlay').textContent = v.paused ? '▶' : '⏸';
     if (!r || r.end - r.start < 8) {

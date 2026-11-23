@@ -946,3 +946,10 @@ html:not(.web) .web-only { display: none !important; }
 .app-version.focused { outline: 0 !important; color: #c9d2e6; }
 .chk-lock { font-size: 16px !important; padding: 6px 14px !important; margin-left: 14px; vertical-align: middle; }
 .phone .chk-lock { font-size: 11px !important; padding: 4px 8px !important; }
+/* Menú vertical: barra de tiempo (⏪ ⏯ ⏩ · progreso · EN VIVO) al lado de la lista */
+.hbar.ctrl-only { left: 600px; padding: 18px 0 22px; }
+.hbar.ctrl-only .hb-head, .hbar.ctrl-only .hb-track, .hbar.ctrl-only .hb-foot { display: none; }
+.hbar.ctrl-only .hb-ctrl { padding-top: 0; padding-left: 40px; }
+.phone .hbar.ctrl-only { left: 0; padding: 8px 0 calc(env(safe-area-inset-bottom) + 8px); }
+.phone .hbar.ctrl-only .hb-ctrl { padding-left: 12px; }
+.phone #player.side-v .side { bottom: calc(env(safe-area-inset-bottom) + 92px); }
