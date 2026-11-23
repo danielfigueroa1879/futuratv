@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.14.3';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.14.4';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -2571,7 +2571,7 @@
     if (Date.now() - pipDragEnd < 400) { e.preventDefault(); return; }
     var pt = e.target.closest && e.target.closest('[data-pt]');
     if (pt) { playerTool(pt.getAttribute('data-pt')); return; }
-    if (IS_PHONE && mode === 'full' && sideOpen && e.target.closest && e.target.closest('#player') &&
+    if ((IS_PHONE || IS_WEB) && mode === 'full' && sideOpen && e.target.closest && e.target.closest('#player') &&
         !e.target.closest('#side') && !e.target.closest('#hbar')) { closeSide(); return; }      // tocar fuera de la lista la cierra
     if (IS_PHONE && mode === 'full' && !sideOpen && e.target.closest && e.target.closest('#player')) { showTools(); return; }
     var hc = e.target.closest && e.target.closest('[data-hc]');
