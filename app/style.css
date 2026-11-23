@@ -965,3 +965,10 @@ html:not(.web) .web-only { display: none !important; }
   .phone .srow .ph { width: 24px; height: 24px; margin: 0 7px; font-size: 11px; }
   .phone .srow .star { font-size: 14px; }
 }
+/* Botón para cambiar la lista entre vertical y horizontal */
+.lm-btn { border: 0; border-radius: 14px; padding: 4px 12px; font: inherit; font-size: 15px; font-weight: 600; color: #fff;
+  background: rgba(139,92,246,.85); margin-left: 10px; cursor: pointer; white-space: nowrap; }
+.lm-btn:active { transform: scale(.94); }
+.side-head .lm-btn { margin-left: 8px; }
+.hb-head .lm-btn { margin-left: auto; margin-right: 0; }
+.phone .lm-btn { font-size: 12px; padding: 4px 10px; }

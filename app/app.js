@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.14.9';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.15.0';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -1850,6 +1850,7 @@
   // TV: la lista puede ser vertical (lateral) u horizontal (carrusel abajo, con controles de tiempo)
   // Por defecto: carrusel horizontal (al actualizar se pasa una vez a horizontal; luego se puede cambiar en Ajustes)
   if (!store('listModeDefH')) { store('listMode', 'h'); store('listModeDefH', '1'); }
+  if (IS_PHONE && !store('listModePhoneV')) { store('listMode', 'v'); store('listModePhoneV', '1'); }   // celular: vertical por defecto
   var LIST_H = store('listMode') !== 'v', hbFocus = -1;   // -1 = tarjetas · 0..n = botón de tiempo
   function openSide() {
     sideOpen = true; hbFocus = -1;
@@ -1864,6 +1865,13 @@
     hbTimeTick();
     $('osd').classList.add('fade');
     bumpSide();
+  }
+  // Cambiar la lista de canales entre vertical (al costado) y horizontal (carrusel abajo); si está abierta, se cambia al tiro
+  function toggleListMode() {
+    LIST_H = !LIST_H; store('listMode', LIST_H ? 'h' : 'v'); updateListModeBtn();
+    prevTriple = prevWant; prevAutoOff = false;       // vuelve a intentar las vecinas en vivo
+    if (sideOpen) { closeSide(); openSide(); }
+    toast(LIST_H ? 'Lista abajo (carrusel horizontal)' : 'Lista al costado (vertical)');
   }
   function closeSide() {
     sideOpen = false; clearTimeout(sideTimer); sidePhoneKey = ''; $('player').classList.remove('side-v');
@@ -1881,7 +1889,10 @@
       sideIdx = i >= 0 ? i : 0;
     }
     sideIdx = Math.max(0, Math.min(sideIdx, sideList.length - 1));
-    $('sideHead').innerHTML = '<span class="arrow">◀</span>' + escapeHtml(groupLabel(sideGroup)) + '<span class="arrow">▶</span>';
+    $('sideHead').innerHTML = '<span class="arrow">◀</span>' + escapeHtml(groupLabel(sideGroup)) + '<span class="arrow">▶</span>' +
+      (IS_PHONE || IS_WEB ? '<button class="lm-btn" title="Pasar la lista abajo (horizontal)">⬇ Abajo</button>' : '');
+    if ((IS_PHONE || IS_WEB) && !document.querySelector('.hb-head .lm-btn'))
+      document.querySelector('.hb-head').insertAdjacentHTML('beforeend', '<button class="lm-btn" title="Pasar la lista al costado (vertical)">⬅ Al costado</button>');
     $('hbGroup').textContent = groupLabel(sideGroup);
     updateSideMarks();
   }
@@ -2030,7 +2041,11 @@
       }
     }, { passive: true });
     $('hbTrack').addEventListener('click', function (e) { if (swiped) { swiped = false; e.stopPropagation(); e.preventDefault(); } }, true);
-    document.querySelector('.hb-head').addEventListener('click', function (e) { e.stopPropagation(); sideGroupMove(1); bumpSide(); });
+    document.querySelector('.hb-head').addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (e.target.closest && e.target.closest('.lm-btn')) { toggleListMode(); return; }
+      sideGroupMove(1); bumpSide();
+    });
   })();
 
   // ---------- TV: vista previa en vivo (solo imagen) del canal elegido en la lista lateral ----------
@@ -2387,12 +2402,7 @@
       toast(prevWant ? 'Carrusel: la tarjeta del medio y sus 2 vecinas en vivo' : 'Carrusel: solo la tarjeta del medio en vivo');
       return;
     }
-    if (el.id === 'listMode') {
-      LIST_H = !LIST_H; store('listMode', LIST_H ? 'h' : 'v'); updateListModeBtn();
-      prevTriple = prevWant; prevAutoOff = false;       // vuelve a intentar las vecinas en vivo
-      toast(LIST_H ? 'Lista horizontal (carrusel) con controles de tiempo' : 'Lista vertical (lateral)');
-      return;
-    }
+    if (el.id === 'listMode') { toggleListMode(); return; }
     if (el.id === 'checkUpdate' && IS_WEB) { webCheckUpdate(); return; }
     if (el.id === 'checkUpdate') {
       if (IS_ANDROID && typeof window.Android.checkUpdateNow === 'function') { toast('Buscando actualización…'); window.Android.checkUpdateNow(); }
@@ -2571,6 +2581,7 @@
   document.addEventListener('click', function (e) {
     if (suppressClick) { suppressClick = false; e.preventDefault(); return; }
     if (Date.now() - pipDragEnd < 400) { e.preventDefault(); return; }
+    if (e.target.closest && e.target.closest('#sideHead .lm-btn')) { toggleListMode(); return; }   // ⬇ Abajo
     var pt = e.target.closest && e.target.closest('[data-pt]');
     if (pt) { playerTool(pt.getAttribute('data-pt')); return; }
     if ((IS_PHONE || IS_WEB) && mode === 'full' && sideOpen && e.target.closest && e.target.closest('#player') &&
