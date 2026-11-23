@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.14.6';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.14.7';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -1872,7 +1872,6 @@
   }
   function bumpSide() {
     clearTimeout(sideTimer);
-    if (IS_PHONE && LIST_H && window.innerHeight > window.innerWidth) return;   // celular vertical: el carrusel no tapa el video, queda abierto
     sideTimer = setTimeout(function () { if (!menuOpen) closeSide(); }, 30000);   // se cierra solo tras 30 s sin tocar el control
   }
   function renderSide(selectNow) {
@@ -3239,9 +3238,13 @@
     var favList = listFor(FAV_GROUP).filter(function (c) { return !c.yt; });
     if (!favList.length || mode !== 'none') return;
     playChannel(favList, 0, FAV_GROUP, 'full');
-    // Celular: la primera vista muestra el canal con el carrusel de favoritos abierto abajo
-    if (IS_PHONE && LIST_H) setTimeout(function () {
-      if (mode === 'full' && !sideOpen && !menuOpen) { $('ptools').classList.add('hidden'); openSide(); }
+    // Celular: al abrir se ve el canal con la lista de canales (vertical u horizontal, la que esté elegida)
+    // y a los pocos segundos la lista se esconde sola (si la tocas, se queda abierta un rato más)
+    if (IS_PHONE) setTimeout(function () {
+      if (mode !== 'full' || sideOpen || menuOpen) return;
+      $('ptools').classList.add('hidden'); openSide();
+      clearTimeout(sideTimer);
+      sideTimer = setTimeout(function () { if (!menuOpen) closeSide(); }, 6000);
     }, 300);
   }
 
