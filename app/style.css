@@ -972,3 +972,9 @@ html:not(.web) .web-only { display: none !important; }
 .side-head .lm-btn { margin-left: 8px; }
 .hb-head .lm-btn { margin-left: auto; margin-right: 0; }
 .phone .lm-btn { font-size: 12px; padding: 4px 10px; }
+/* PC (navegador): la lista vertical se recorre con la rueda del mouse */
+html.web:not(.phone) .side-list { overflow-y: auto; overscroll-behavior: contain; }
+html.web:not(.phone) .side .srow { cursor: pointer; content-visibility: auto; contain-intrinsic-size: auto 84px; }
+html.web:not(.phone) .side .srow:hover:not(.sel) { background: rgba(255,255,255,.08); }
+html.web:not(.phone) .side-list::-webkit-scrollbar { width: 8px; }
+html.web:not(.phone) .side-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,.25); border-radius: 4px; }

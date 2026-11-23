@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.15.0';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.15.1';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -1900,7 +1900,7 @@
   var SIDE_ROWS = IS_PHONE ? Math.max(12, Math.ceil(Math.max(VH(), VW()) / 54) + 2) : 10;
   function updateSideMarks() {
     if (LIST_H) { hbRender(); sidePrevSchedule(); return; }
-    if (IS_PHONE) { sideRenderPhone(); return; }
+    if (IS_PHONE || IS_WEB) { sideRenderPhone(); return; }   // celular y PC: lista con desplazamiento normal (dedo / rueda del mouse)
     var n = sideList.length;
     var start = Math.max(0, Math.min(sideIdx - Math.floor(SIDE_ROWS / 2), n - SIDE_ROWS));
     var html = '';
@@ -2118,21 +2118,25 @@
     var html = '';
     for (var i = 0; i < n; i++) {
       var c = sideList[i];
-      html += '<div class="srow' + (nowCh && c === nowCh ? ' now' : '') + '" data-s="' + i + '">' +
+      html += '<div class="srow' + (nowCh && c === nowCh ? ' now' : '') + (IS_WEB && !IS_PHONE && i === sideIdx ? ' sel' : '') + '" data-s="' + i + '">' +
         (c.logo ? '<img src="' + escapeHtml(c.logo) + '" loading="lazy" decoding="async" alt="" data-i="' + escapeHtml(c.name.charAt(0)) + '" onerror="mitvImgFail(this)">'
           : '<div class="ph">' + escapeHtml(c.name.charAt(0)) + '</div>') +
         '<span class="nm">' + escapeHtml(c.name) + '</span>' + (isFav(c) ? '<span class="star">★</span>' : '') + '</div>';
     }
     var top = box.scrollTop;
     box.innerHTML = html || '<div class="srow empty">Sin canales</div>';
-    if (same) box.scrollTop = top;                                  // misma lista: queda donde estaba
+    if (same) {
+      box.scrollTop = top;                                          // misma lista: queda donde estaba
+      var selRow = IS_WEB && !IS_PHONE && box.querySelector('.srow.sel');   // PC con teclado ▲▼: que el elegido se vea
+      if (selRow) { var rb = selRow.offsetTop - box.scrollTop; if (rb < 0 || rb > box.clientHeight - selRow.offsetHeight) selRow.scrollIntoView({ block: 'nearest' }); }
+    }
     else {                                                          // al abrir: el canal que estás viendo queda al medio
       var row = box.querySelector('.srow.now') || box.children[Math.min(sideIdx, n - 1)];
       box.scrollTop = row ? Math.max(0, row.offsetTop - box.clientHeight / 2 + row.offsetHeight / 2) : 0;
     }
     if (sideOpen) warmChannel(sideList[sideIdx]);
   }
-  if (IS_PHONE) {
+  if (IS_PHONE || IS_WEB) {
     var sideScrollT = 0;
     $('sideList').addEventListener('scroll', function () {        // mientras se recorre, la lista no se cierra sola
       var t = Date.now(); if (t - sideScrollT > 1000) { sideScrollT = t; if (sideOpen) bumpSide(); }
@@ -2163,7 +2167,7 @@
     if (sideOpen) warmChannel(sideList[sideIdx]);
     var slots = prevInit();
     clearTimeout(prevTimer);
-    if (!sideOpen || mode !== 'full' || (IS_PHONE && !LIST_H)) { sidePrevStop(); return; }   // celular, lista vertical: sin vista previa
+    if (!sideOpen || mode !== 'full' || ((IS_PHONE || IS_WEB) && !LIST_H)) { sidePrevStop(); return; }   // celular, lista vertical: sin vista previa
     var want = [];                                 // [elemento, canal, esVecina]
     if (LIST_H) {
       Array.prototype.forEach.call($('hbTrack').querySelectorAll('.hcard[data-s]'), function (el) {
