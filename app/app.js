@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.14.8';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.14.9';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -3240,12 +3240,19 @@
     playChannel(favList, 0, FAV_GROUP, 'full');
     // Al abrir (PC, celular y TV) se ve el canal con la lista de canales (vertical u horizontal, la que esté elegida)
     // y a los pocos segundos la lista se esconde sola (si la tocas, se queda abierta un rato más)
-    setTimeout(function () {
+    // Espera a que el canal muestre imagen (así el menú no aparece sobre la pantalla negra y el canal parte más rápido)
+    var v = $('video'), opened = false;
+    var openNow = function () {
+      if (opened) return; opened = true;
+      v.removeEventListener('playing', onPlay);
       if (mode !== 'full' || sideOpen || menuOpen) return;
       $('ptools').classList.add('hidden'); openSide();
       clearTimeout(sideTimer);
       sideTimer = setTimeout(function () { if (!menuOpen) closeSide(); }, 6000);
-    }, 300);
+    };
+    var onPlay = function () { setTimeout(openNow, 500); };
+    v.addEventListener('playing', onPlay);
+    setTimeout(openNow, 8000);                    // si el canal no parte, el menú aparece igual (para elegir otro)
   }
 
   // ---------- Inicio ----------
