@@ -953,3 +953,15 @@ html:not(.web) .web-only { display: none !important; }
 .phone .hbar.ctrl-only { left: 0; padding: 8px 0 calc(env(safe-area-inset-bottom) + 8px); }
 .phone .hbar.ctrl-only .hb-ctrl { padding-left: 12px; }
 .phone #player.side-v .side { bottom: calc(env(safe-area-inset-bottom) + 92px); }
+/* Celular vertical: lista lateral más compacta (más canales a la vista y más video visible) */
+@media (orientation: portrait) and (max-width: 600px) {
+  .phone .side { width: min(62vw, 260px); }
+  .phone .side-head { font-size: 14px; padding: 0 10px 4px; }
+  .phone .side-head .arrow { font-size: 14px; }
+  .phone .side-count { font-size: 11px; padding: 0 10px 4px; }
+  .phone .srow { height: 40px; font-size: 13px; gap: 8px; margin: 1px 5px; padding: 0 8px; border-radius: 10px; }
+  .phone .side .srow { contain-intrinsic-size: auto 42px; }
+  .phone .srow img { width: 38px; height: 24px; }
+  .phone .srow .ph { width: 24px; height: 24px; margin: 0 7px; font-size: 11px; }
+  .phone .srow .star { font-size: 14px; }
+}
