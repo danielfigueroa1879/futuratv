@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.15.1';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.15.2';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -1134,7 +1134,7 @@
       refreshChannels();
       if (window.mitvReadyFast) window.mitvReadyFast();
       autoStartFavorite();
-      setTimeout(loadWorld, 4000);              // la lista mundial, por detrás (no frena la apertura)
+      setTimeout(loadWorld, IS_PHONE || IS_WEB ? 4000 : 30000);   // la lista en español, por detrás (en la TV, cuando el canal ya está andando)
       var failed = lists[1].filter(function (x) { return m3uStatus[x.u] < 0; }).length;
       if (failed) $('liveStatus').textContent += ' (' + (failed === 1 ? 'una lista extra no se pudo cargar' : failed + ' listas extra no se pudieron cargar') + ': revisa Ajustes)';
       renderM3uLists();
@@ -1873,8 +1873,15 @@
     if (sideOpen) { closeSide(); openSide(); }
     toast(LIST_H ? 'Lista abajo (carrusel horizontal)' : 'Lista al costado (vertical)');
   }
+  var sideIntro = false;                          // el menú se abrió solo al iniciar (sin vistas previas hasta que lo uses)
+  function sideIntroEnd() {
+    if (!sideIntro) return;
+    sideIntro = false;
+    if (sideOpen) setTimeout(sidePrevSchedule, 0);   // ahora sí, vistas previas
+  }
+  ['keydown', 'pointerdown', 'touchstart', 'wheel'].forEach(function (ev) { document.addEventListener(ev, sideIntroEnd, { capture: true, passive: true }); });
   function closeSide() {
-    sideOpen = false; clearTimeout(sideTimer); sidePhoneKey = ''; $('player').classList.remove('side-v');
+    sideOpen = false; sideIntro = false; clearTimeout(sideTimer); sidePhoneKey = ''; $('player').classList.remove('side-v');
     sidePrevStop();
     $('side').classList.add('hidden'); $('hbar').classList.add('hidden');
   }
@@ -2164,6 +2171,7 @@
     return true;
   }
   function sidePrevSchedule() {
+    if (sideIntro) { sidePrevStop(); return; }   // menú que se abre solo al iniciar: sin videos extra (el canal parte fluido)
     if (sideOpen) warmChannel(sideList[sideIdx]);
     var slots = prevInit();
     clearTimeout(prevTimer);
@@ -3261,6 +3269,7 @@
       if (opened) return; opened = true;
       v.removeEventListener('playing', onPlay);
       if (mode !== 'full' || sideOpen || menuOpen) return;
+      sideIntro = true;
       $('ptools').classList.add('hidden'); openSide();
       clearTimeout(sideTimer);
       sideTimer = setTimeout(function () { if (!menuOpen) closeSide(); }, 6000);
