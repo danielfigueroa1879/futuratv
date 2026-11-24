@@ -978,3 +978,10 @@ html.web:not(.phone) .side .srow { cursor: pointer; content-visibility: auto; co
 html.web:not(.phone) .side .srow:hover:not(.sel) { background: rgba(255,255,255,.08); }
 html.web:not(.phone) .side-list::-webkit-scrollbar { width: 8px; }
 html.web:not(.phone) .side-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,.25); border-radius: 4px; }
+/* Botón para cambiar vertical/horizontal: transparente */
+.lm-btn { background: rgba(255,255,255,.08) !important; border: 1px solid rgba(255,255,255,.35) !important; color: #e8ecf5 !important; font-weight: 600; }
+.lm-btn.focused { background: #fff !important; color: #0b0f1a !important; border-color: #fff !important; transform: scale(1.06); }
+html:not(.web):not(.phone) .side-head .lm-btn { font-size: 20px; padding: 6px 16px; }
+html:not(.web):not(.phone) .hb-head .lm-btn { display: none; }      /* TV: se usa el botón de los controles */
+.hc.lm { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.35); }
+.hbar.ctrl-only .hc.lm { display: none; }       /* en el menú vertical no corresponde */

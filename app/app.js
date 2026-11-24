@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.15.2';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.15.3';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -1851,6 +1851,7 @@
   // Por defecto: carrusel horizontal (al actualizar se pasa una vez a horizontal; luego se puede cambiar en Ajustes)
   if (!store('listModeDefH')) { store('listMode', 'h'); store('listModeDefH', '1'); }
   if (IS_PHONE && !store('listModePhoneV')) { store('listMode', 'v'); store('listModePhoneV', '1'); }   // celular: vertical por defecto
+  if (!IS_PHONE && !IS_WEB && !store('listModeTVV')) { store('listMode', 'v'); store('listModeTVV', '1'); } // TV: vertical por defecto
   var LIST_H = store('listMode') !== 'v', hbFocus = -1;   // -1 = tarjetas · 0..n = botón de tiempo
   function openSide() {
     sideOpen = true; hbFocus = -1;
@@ -1867,7 +1868,13 @@
     bumpSide();
   }
   // Cambiar la lista de canales entre vertical (al costado) y horizontal (carrusel abajo); si está abierta, se cambia al tiro
+  var lmFocus = false;                            // TV: el botón «⬇ Abajo» de la lista vertical está elegido
+  function setLmFocus(on) {
+    lmFocus = on;
+    var b = document.querySelector('#sideHead .lm-btn'); if (b) b.classList.toggle('focused', on);
+  }
   function toggleListMode() {
+    lmFocus = false; hbFocus = -1;
     LIST_H = !LIST_H; store('listMode', LIST_H ? 'h' : 'v'); updateListModeBtn();
     prevTriple = prevWant; prevAutoOff = false;       // vuelve a intentar las vecinas en vivo
     if (sideOpen) { closeSide(); openSide(); }
@@ -1881,7 +1888,7 @@
   }
   ['keydown', 'pointerdown', 'touchstart', 'wheel'].forEach(function (ev) { document.addEventListener(ev, sideIntroEnd, { capture: true, passive: true }); });
   function closeSide() {
-    sideOpen = false; sideIntro = false; clearTimeout(sideTimer); sidePhoneKey = ''; $('player').classList.remove('side-v');
+    sideOpen = false; sideIntro = false; lmFocus = false; clearTimeout(sideTimer); sidePhoneKey = ''; $('player').classList.remove('side-v');
     sidePrevStop();
     $('side').classList.add('hidden'); $('hbar').classList.add('hidden');
   }
@@ -1897,7 +1904,7 @@
     }
     sideIdx = Math.max(0, Math.min(sideIdx, sideList.length - 1));
     $('sideHead').innerHTML = '<span class="arrow">◀</span>' + escapeHtml(groupLabel(sideGroup)) + '<span class="arrow">▶</span>' +
-      (IS_PHONE || IS_WEB ? '<button class="lm-btn" title="Pasar la lista abajo (horizontal)">⬇ Abajo</button>' : '');
+      '<button class="lm-btn' + (lmFocus ? ' focused' : '') + '" title="Pasar la lista abajo (horizontal)">⬇ Abajo</button>';
     if ((IS_PHONE || IS_WEB) && !document.querySelector('.hb-head .lm-btn'))
       document.querySelector('.hb-head').insertAdjacentHTML('beforeend', '<button class="lm-btn" title="Pasar la lista al costado (vertical)">⬅ Al costado</button>');
     $('hbGroup').textContent = groupLabel(sideGroup);
@@ -1938,6 +1945,10 @@
     $('hbar').classList.toggle('in-ctrl', hbFocus >= 0);
   }
   var HB_CTRL = ['back', 'play', 'fwd', 'live'];
+  if (!IS_PHONE && !IS_WEB) {                   // TV: con ▼ y ◀▶ se llega a «⬅ Al costado» (lista vertical)
+    HB_CTRL.push('lm');
+    document.getElementById('hbCtrl').insertAdjacentHTML('beforeend', '<button class="hc lm" data-hc="lm">⬅ Al costado</button>');
+  }
   function hbMarkCtrl() {
     Array.prototype.forEach.call(document.querySelectorAll('#hbCtrl .hc'), function (b) {
       b.classList.toggle('focused', hbFocus >= 0 && b.getAttribute('data-hc') === HB_CTRL[hbFocus]);
@@ -1962,6 +1973,7 @@
     return true;
   }
   function hbAction(a) {
+    if (a === 'lm') { toggleListMode(); return; }
     if (a === 'back') seekBy(-30);
     else if (a === 'fwd') seekBy(30);
     else if (a === 'play') togglePause();
@@ -2175,7 +2187,7 @@
     if (sideOpen) warmChannel(sideList[sideIdx]);
     var slots = prevInit();
     clearTimeout(prevTimer);
-    if (!sideOpen || mode !== 'full' || ((IS_PHONE || IS_WEB) && !LIST_H)) { sidePrevStop(); return; }   // celular, lista vertical: sin vista previa
+    if (!sideOpen || mode !== 'full' || !LIST_H) { sidePrevStop(); return; }   // lista vertical: sin recuadro de vista previa (más liviana)   // celular, lista vertical: sin vista previa
     var want = [];                                 // [elemento, canal, esVecina]
     if (LIST_H) {
       Array.prototype.forEach.call($('hbTrack').querySelectorAll('.hcard[data-s]'), function (el) {
@@ -2488,6 +2500,7 @@
   var okTimer = null, okLong = false;
   function okShort() {
     if (mode === 'full' && sideOpen && LIST_H && hbFocus >= 0) { hbAction(HB_CTRL[hbFocus]); bumpSide(); return; }
+    if (mode === 'full' && sideOpen && !LIST_H && lmFocus) { toggleListMode(); return; }
     if (mode === 'full' && sideOpen) { playChannel(sideList, sideIdx, sideGroup, 'full'); bumpSide(); return; }
     if (mode === 'full') { openSide(); return; }
     activate(focused);
@@ -2550,6 +2563,11 @@
       if (sideOpen && LIST_H) { bumpSide(); hbKey(k); e.preventDefault(); return; }
       if (sideOpen) {
         bumpSide();
+        if (lmFocus) {                           // en el botón «⬇ Abajo»: ▼ vuelve a la lista
+          if (k === KEY.DOWN || k === KEY.LEFT || k === KEY.RIGHT) setLmFocus(false);
+          e.preventDefault(); return;
+        }
+        if (k === KEY.UP && sideIdx === 0) { setLmFocus(true); e.preventDefault(); return; }   // ▲ en el primero: al botón
         if (k === KEY.UP) sideMove(-1);
         else if (k === KEY.DOWN) sideMove(1);
         else if (k === KEY.CH_UP) sideMove(-8);
