@@ -985,3 +985,10 @@ html:not(.web):not(.phone) .side-head .lm-btn { font-size: 20px; padding: 6px 16
 html:not(.web):not(.phone) .hb-head .lm-btn { display: none; }      /* TV: se usa el botón de los controles */
 .hc.lm { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.35); }
 .hbar.ctrl-only .hc.lm { display: none; }       /* en el menú vertical no corresponde */
+/* Botón «⬇ Abajo» / «⬅ Al costado» elegido: vidrio esmerilado (no blanco sólido) */
+.lm-btn.focused, .hc.lm.focused {
+  background: rgba(255,255,255,.22) !important; color: #fff !important; border: 1px solid rgba(255,255,255,.7) !important;
+  -webkit-backdrop-filter: blur(10px) saturate(1.3); backdrop-filter: blur(10px) saturate(1.3);
+  box-shadow: 0 0 0 2px rgba(255,255,255,.25), 0 6px 18px rgba(0,0,0,.35); transform: scale(1.06);
+}
+.lm-btn.focused, .hc.lm.focused { outline: 2px solid rgba(255,255,255,.45) !important; outline-offset: 3px; }
