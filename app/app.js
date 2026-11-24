@@ -9,7 +9,7 @@
   // ---------- Configuración ----------
   // id = app en webOS (TV LG) · android = paquetes posibles en Android TV / Google TV / Fire TV.
   // Si una app no está instalada, verás un aviso.
-  var APP_BUILD = '2.15.4';   // lo escribe make-version.py: versión del código que está corriendo
+  var APP_BUILD = '2.15.5';   // lo escribe make-version.py: versión del código que está corriendo
   var IS_ANDROID = typeof window.Android !== 'undefined';
   // ¿Celular/tablet o TV? En Android lo dice la app; en un navegador se deduce por la pantalla táctil.
   var IS_PHONE = (function () {
@@ -1852,6 +1852,7 @@
   if (!store('listModeDefH')) { store('listMode', 'h'); store('listModeDefH', '1'); }
   if (IS_PHONE && !store('listModePhoneV')) { store('listMode', 'v'); store('listModePhoneV', '1'); }   // celular: vertical por defecto
   if (!IS_PHONE && !IS_WEB && !store('listModeTVV')) { store('listMode', 'v'); store('listModeTVV', '1'); } // TV: vertical por defecto
+  if (IS_WEB && !IS_PHONE && !store('listModePCV')) { store('listMode', 'v'); store('listModePCV', '1'); } // PC: vertical por defecto
   var LIST_H = store('listMode') !== 'v', hbFocus = -1;   // -1 = tarjetas · 0..n = botón de tiempo
   function openSide() {
     sideOpen = true; hbFocus = -1;
